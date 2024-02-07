@@ -2,7 +2,6 @@
 open GenerateData
 open Elmish
 
-
 //-------------------------------------------------------------------------------------------//
 //--------Types to represent tests with (possibly) random data, and results from tests-------//
 //-------------------------------------------------------------------------------------------//
@@ -233,15 +232,32 @@ module HLPTick3 =
                     }
                 placeSymbol symLabel (Custom ccType) position model
             
-        
 
         // Rotate a symbol
         let rotateSymbol (symLabel: string) (rotate: Rotation) (model: SheetT.Model) : (SheetT.Model) =
-            failwithf "Not Implemented"
+            let symbols = model.Wire.Symbol.Symbols
+            
+            symbols
+            |> Map.tryPick (fun key symbol ->
+                if (fst SymbolT.component_ symbol).Label = symLabel
+                then
+                    let newMap = Map.add key (RotateScale.rotateSymbolByDegree rotate symbol) symbols
+                    Some (Optic.set SheetT.symbols_ newMap model)
+                else None)
+            |> Option.defaultValue model // if not found, return unchanged
 
         // Flip a symbol
         let flipSymbol (symLabel: string) (flip: SymbolT.FlipType) (model: SheetT.Model) : (SheetT.Model) =
-            failwithf "Not Implemented"
+            let symbols = model.Wire.Symbol.Symbols
+            
+            symbols
+            |> Map.tryPick (fun key symbol ->
+                if (fst SymbolT.component_ symbol).Label = symLabel
+                then
+                    let newMap = Map.add key (RotateScale.flipSymbolInBlock flip symbol.CentrePos symbol) symbols
+                    Some (Optic.set SheetT.symbols_ newMap model)
+                else None)
+            |> Option.defaultValue model // if
 
         /// Add a (newly routed) wire, source specifies the Output port, target the Input port.
         /// Return an error if either of the two ports specified is invalid, or if the wire duplicates and existing one.
@@ -329,6 +345,10 @@ module HLPTick3 =
         fromList [-100..20..100]
         |> map (fun n -> middleOfSheet + {X=float n; Y=0.})
 
+    let gridPositions =
+        (fromList [-100..20..100], fromList [-100..20..100])
+        ||> product (fun a b -> middleOfSheet + {X=float a; Y=float b})
+
     /// demo test circuit consisting of a DFF & And gate
     let makeTest1Circuit (andPos:XYPos) =
         initSheetModel
@@ -338,7 +358,28 @@ module HLPTick3 =
         |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
         |> getOkOrFail
 
+    let randRotateDFF (model: SheetT.Model): SheetT.Model =
+        match randomInt 1 1 4 |> toList |> List.head with
+        | 1 -> rotateSymbol "FF1" Degree90 model
+        | 2 -> rotateSymbol "FF1" Degree180 model
+        | 3 -> rotateSymbol "FF1" Degree270 model
+        | _ -> model // includes 0 degree case
 
+
+    let randFlipDFF (model: SheetT.Model): SheetT.Model =
+        match randomInt 1 1 3 |> toList |> List.head with
+        | 1 -> flipSymbol "FF1" SymbolT.FlipVertical model
+        | 2 -> flipSymbol "FF1" SymbolT.FlipHorizontal model
+        | _ -> model
+
+    let makeRandCircuit (andPos:XYPos) =
+        initSheetModel
+        |> placeSymbol "G1" (GateN(And,2)) andPos
+        |> Result.bind (placeSymbol "FF1" DFF middleOfSheet)
+        |> Result.map (randFlipDFF >> randRotateDFF)
+        |> Result.bind (placeWire (portOf "G1" 0) (portOf "FF1" 0))
+        |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
+        |> getOkOrFail
 
 //------------------------------------------------------------------------------------------------//
 //-------------------------Example assertions used to test sheets---------------------------------//
@@ -446,6 +487,26 @@ module HLPTick3 =
                 dispatch
             |> recordPositionInTest testNum dispatch
 
+        let test5 testNum firstSample dispatch =
+            runTestOnSheets
+                "Test routing between two ports on two different components"
+                firstSample
+                gridPositions
+                makeTest1Circuit
+                Asserts.failOnWireIntersectsSymbol
+                dispatch
+            |> recordPositionInTest testNum dispatch
+
+        let test6 testNum firstSample dispatch =
+            runTestOnSheets
+                "Test routing between two ports of components which will be arbitrarily flipped and rotated"
+                firstSample
+                gridPositions
+                makeRandCircuit
+                Asserts.failOnWireIntersectsSymbol
+                dispatch
+            |> recordPositionInTest testNum dispatch
+
         /// List of tests available which can be run ftom Issie File Menu.
         /// The first 9 tests can also be run via Ctrl-n accelerator keys as shown on menu
         let testsToRunFromSheetMenu : (string * (int -> int -> Dispatch<Msg> -> Unit)) list =
@@ -456,8 +517,8 @@ module HLPTick3 =
                 "Test2", test2 // example
                 "Test3", test3 // example
                 "Test4", test4 
-                "Test5", fun _ _ _ -> printf "Test5" // dummy test - delete line or replace by real test as needed
-                "Test6", fun _ _ _ -> printf "Test6"
+                "Test5", test5
+                "Test6", test6
                 "Test7", fun _ _ _ -> printf "Test7"
                 "Test8", fun _ _ _ -> printf "Test8"
                 "Next Test Error", fun _ _ _ -> printf "Next Error:" // Go to the nexterror in a test
