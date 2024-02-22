@@ -125,56 +125,35 @@ let countSymbolIntersectPairsT1R ( sheet : SheetT.Model ) =
     |> List.distinctBy (fun ((n1, _),(n2,_)) -> if n1 < n2 then (n1,n2) else (n2, n1))
     |> List.filter (fun ((n1, box1),(n2,box2)) -> (n1 <> n2) && BlockHelpers.overlap2DBox box1 box2)
     |> List.length
-    
+
+
+// taken from findWireSymbolIntersection
+let allSymbolBBoxInSheet ( sheet : SheetT.Model) =
+    sheet.Wire.Symbol.Symbols
+    |> Map.values
+    |> Seq.toList
+    |> List.filter (fun s -> s.Annotation = None)
+    |> List.map (fun s -> (s.Component.Type, Symbol.getSymbolBoundingBox s))
+
 // Function 10 : The number of distinct wire visible segments that intersect with one or more symbols. See Tick3.HLPTick3.visibleSegments for a helper. Count over all visible wire segments.
 let countDistinctWireSegmentIntersectSymbol ( sheet : SheetT.Model ) = 
-    // This function essentially reimplements findWireSymbolIntersections but for each segment of the wire, without the extra logic for MUXs
-    // in order to use segmentIntersectsBoundingBox , the symbol bounding box is needed as well as the segmet start and end position.
-    // segment start and end are absolute positions coming from segmentsToIssieVertices, however that function doesn't perform the coalescing operation visible segment does
-    // Therefore segmenetsToIssieVertices is essentially reimplemented using the potentially coalesced segment vectors coming from visible segments. 
-    // All of this should probably best be unified, so that segmentsToIssieVertices is not repeated and so that findWireSymbolIntersections also uses these helper functions.
-    // findWireSymbolIntersections in general should be broken into smaller components, as it has a couple useful helper functions defined within
-
-    let wires = sheet.Wire.Wires
-    let symbols = sheet.Wire.Symbol.Symbols
-
-    let getCoalescedWireVertices ( wire : BusWireT.Wire) : (XYPos * XYPos) list =
-        let segList = visibleSegments wire.WId sheet
-        // adapted from segmentsToIssieVertices
-        let segStartEndPairs = 
-            (wire.StartPos,segList)
-            ||> List.scan(fun currPos seg ->
-                { currPos with X = currPos.X + seg.X; Y = currPos.Y + seg.Y})
-            |> List.pairwise
-        
-        segStartEndPairs.[0 .. segStartEndPairs.Length - 2] // remove last pair (end-start)
-
-    let allWireSegmentPairs =         
-        wires
-        |> Map.toList
-        |> List.map (fun (_wId, wire) -> getCoalescedWireVertices wire)
-        |> List.distinct
-
-    // taken from findWireSymbolIntersection
-    let allSymbolsInSheet =
-        symbols
-        |> Map.values
-        |> Seq.toList
-        |> List.filter (fun s -> s.Annotation = None)
-        |> List.map (fun s -> (s.Component.Type, Symbol.getSymbolBoundingBox s))
-    
-    allSymbolsInSheet
-    |> List.map (fun (_compType, bbox) -> 
-        allWireSegmentPairs
-        |> List.map (fun segPairs -> 
-            segPairs
-            |> List.map (fun (segStart, segEnd) -> 
-                match segmentIntersectsBoundingBox bbox segStart segEnd with
-                | Some _ -> 1
-                | None -> 0
-            )
-            |> List.reduce (+)
-        ) 
-        |> List.reduce (+)
+    allSymbolBBoxInSheet sheet
+    |> List.collect (fun (_compType, bbox) -> 
+        getWiresInBox bbox sheet.Wire 
+        |> List.map (fun (wire, segI) -> wire.Segments[segI])
     ) 
-    |> List.reduce (+)
+    |> List.length
+
+
+// // function 10 : The number of distinct pairs of segments that cross each other at right angles. 
+// // Does not include 0 length segments or segments on same net intersecting at one end, or segments on same net on top of each other. Count over whole sheet.
+// let countDistinctWireSegmentOrthogonalIntersect ( sheet : SheetT.Model) = 
+    
+//     let allSegments = 
+//         allWireSegmentPairsInSheet sheet 
+//         |> List.collect (fun a -> a)
+    
+//     List.allPairs allSegments allSegments
+//     |> List.map (fun (seg1, seg2) -> 
+
+//     )
