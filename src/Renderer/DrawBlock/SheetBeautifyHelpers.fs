@@ -7,6 +7,7 @@ open DrawModelType.BusWireT
 open Optics
 open Optics.Operators
 open BlockHelpers
+open Helpers
 
 //-----------------------------------------------------------------------------------------------
 // visibleSegments is included here as ahelper for info, and because it is needed in project work
@@ -145,15 +146,41 @@ let countDistinctWireSegmentIntersectSymbol ( sheet : SheetT.Model ) =
     |> List.length
 
 
-// // function 10 : The number of distinct pairs of segments that cross each other at right angles. 
-// // Does not include 0 length segments or segments on same net intersecting at one end, or segments on same net on top of each other. Count over whole sheet.
-// let countDistinctWireSegmentOrthogonalIntersect ( sheet : SheetT.Model) = 
-    
-//     let allSegments = 
-//         allWireSegmentPairsInSheet sheet 
-//         |> List.collect (fun a -> a)
-    
-//     List.allPairs allSegments allSegments
-//     |> List.map (fun (seg1, seg2) -> 
+// function 10 : The number of distinct pairs of segments that cross each other at right angles. 
+// Does not include 0 length segments or segments on same net intersecting at one end, or segments on same net on top of each other. Count over whole sheet.
+let countDistinctWireSegmentOrthogonalIntersect ( sheet : SheetT.Model) = 
+    // get a list of segments which intersect at right angles
+    // for each segment obtain asbolute start and end position and corresponding wire Id and segment 
+    // check orthogonality by comparing each segment with all other segments with opposite orientation and withing the range of that segment
 
-//     )
+    let allSegments = 
+        sheet.Wire.Wires
+        |> Map.toList
+        |> List.collect (fun (wId, wire) -> getAbsSegments wire)
+        |> List.distinct
+        |> List.mapi (fun i seg -> (i, seg))
+
+    allSegments
+    |> List.collect (fun (i1, seg1) ->
+        allSegments
+        |> List.filter (fun (i2, seg2) ->
+            i1 <> i2 
+            &&
+            seg2.Orientation <> seg1.Orientation 
+            &&
+            match seg2.Orientation with
+            | Vertical -> 
+                (seg2.Start.X < seg1.End.X) 
+                && (seg2.Start.X > seg1.Start.X) 
+                && (seg2.Start.Y < seg1.Start.Y)
+            | Horizontal -> 
+                (seg2.Start.Y < seg1.End.Y) 
+                && (seg2.Start.Y > seg1.Start.Y) 
+                && (seg2.Start.X < seg1.Start.X)
+        ) 
+        |> List.map (fun (i2, seg2) -> if i2 < i1 then (i1, i2) else (i2, i1))
+    )
+    |> List.distinct
+    |> List.length
+
+    
