@@ -101,13 +101,7 @@ let setSymbolPositionB2W (symId : ComponentId) (sheet : SheetT.Model) (newPositi
 let orderOfPortsBySide_B3RW (side : Edge) =  
     let orderOfEdge_ = 
         ((fun (orderMap : Map<Edge, string list>) -> Map.find side orderMap),
-        (fun (newOrder : string list) orderMap -> 
-        orderMap 
-        |> Map.map (fun e oldOrder -> 
-            match e with 
-            | s when s = side -> newOrder
-            | _ -> oldOrder
-        )))
+        (fun (newOrder : string list) orderMap -> Map.add side newOrder orderMap))
         ||> Lens.create  
     
     SymbolT.portMaps_
@@ -115,7 +109,8 @@ let orderOfPortsBySide_B3RW (side : Edge) =
     >-> orderOfEdge_
 
 // Function 4 : The reversed state of the inputs of a MUX2
-let reversedState_B4RW = Lens.create (fun a -> a.ReversedInputPorts) (fun s a -> {a with ReversedInputPorts = s})
+let reversedState_B4RW = 
+    Lens.create (fun a -> a.ReversedInputPorts) (fun s a -> {a with ReversedInputPorts = s})
 
 // Function 5 : The position of a port on the sheet. It cannot directly be written.
 let getPortPosInSheetB5R ( portId : string ) ( sheet : SheetT.Model ) = 
@@ -220,13 +215,6 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
         |> List.mapi (fun i s -> (i,s))
 
     let overlappingLength = 
-        // allDistinctPairs segments
-        // |> List.filter (fun ((i1, seg1),(i2,seg2)) -> 
-        //     seg1.Orientation = seg2.Orientation
-        //     &&
-        //     overlap1D (getFixedCoord seg1) (getFixedCoord seg2)
-        // )
-        // |>   
 
         ((0, Map.empty),segments)
         ||> List.fold (fun (i, overlappedMap ) (currId, currSeg) -> 
@@ -290,3 +278,25 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
         |> List.reduce (+)
     
     totalLength - overlappingLength
+
+// function 12 : Number of visible wire right-angles. Count over whole sheet.
+let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
+    sheet.Wire.Wires
+    |> Map.values
+    |> Seq.toList
+    |> List.map (fun w ->  
+        ((0, None),getNonZeroAbsSegments w)
+        ||> List.fold (fun (numRightAngles, prevOri) seg -> 
+            (numRightAngles + (
+                match prevOri with
+                | Some ori -> 
+                    if ori <> seg.Orientation
+                    then 1
+                    else 0
+                | None -> 0
+            ), Some seg.Orientation)
+        )
+        |> fst
+    ) 
+    |> List.reduce (+)
+
