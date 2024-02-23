@@ -9,6 +9,7 @@ open Optics.Operators
 open BlockHelpers
 open Helpers
 
+
 //-----------------------------------------------------------------------------------------------
 // visibleSegments is included here as ahelper for info, and because it is needed in project work
 //-----------------------------------------------------------------------------------------------
@@ -50,6 +51,26 @@ let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
     |> (fun segVecs ->
             (segVecs,[1..segVecs.Length-2])
             ||> List.fold tryCoalesceAboutIndex)
+
+// given a list return all unique pairings of its' elements ingnoring ordering
+let allDistinctPairs (lst : 'a list) = 
+    ((1,[]),lst)
+    ||> List.fold (fun (i,lstAcc) v ->  
+        let updatedList = 
+            lst[i ..]
+            |> List.allPairs [v]
+            |> List.append lstAcc
+        (i+1, updatedList)
+    ) 
+    |> snd
+
+
+// had to define another one because predefined one is missing one of the coordinates
+/// Get the coordinate fixed in an ASegment. NB - ASegments can't be zero length
+let inline getFixedCoord (aSeg: ASegment) =
+    match aSeg.Orientation with 
+    | Vertical -> (aSeg.Start.X, aSeg.End.X) 
+    | Horizontal -> (aSeg.Start.Y, aSeg.End.Y)
 
 
 //-----------------Module for beautify Helper functions--------------------------//
@@ -122,8 +143,7 @@ let countSymbolIntersectPairsT1R ( sheet : SheetT.Model ) =
         |> Array.toList
         |> List.mapi (fun n box -> n,box)
 
-    List.allPairs boxes boxes
-    |> List.distinctBy (fun ((n1, _),(n2,_)) -> if n1 < n2 then (n1,n2) else (n2, n1))
+    allDistinctPairs boxes
     |> List.filter (fun ((n1, box1),(n2,box2)) -> (n1 <> n2) && BlockHelpers.overlap2DBox box1 box2)
     |> List.length
 
@@ -137,7 +157,7 @@ let allSymbolBBoxInSheet ( sheet : SheetT.Model) =
     |> List.map (fun s -> (s.Component.Type, Symbol.getSymbolBoundingBox s))
 
 // Function 10 : The number of distinct wire visible segments that intersect with one or more symbols. See Tick3.HLPTick3.visibleSegments for a helper. Count over all visible wire segments.
-let countDistinctWireSegmentIntersectSymbol ( sheet : SheetT.Model ) = 
+let countDistinctWireSegmentIntersectSymbolT2R ( sheet : SheetT.Model ) = 
     allSymbolBBoxInSheet sheet
     |> List.collect (fun (_compType, bbox) -> 
         getWiresInBox bbox sheet.Wire 
@@ -148,7 +168,7 @@ let countDistinctWireSegmentIntersectSymbol ( sheet : SheetT.Model ) =
 
 // function 10 : The number of distinct pairs of segments that cross each other at right angles. 
 // Does not include 0 length segments or segments on same net intersecting at one end, or segments on same net on top of each other. Count over whole sheet.
-let countDistinctWireSegmentOrthogonalIntersect ( sheet : SheetT.Model) = 
+let countDistinctWireSegmentOrthogonalIntersectT3R ( sheet : SheetT.Model) = 
     // get a list of segments which intersect at right angles
     // for each segment obtain asbolute start and end position and corresponding wire Id and segment 
     // check orthogonality by comparing each segment with all other segments with opposite orientation and withing the range of that segment
@@ -183,4 +203,90 @@ let countDistinctWireSegmentOrthogonalIntersect ( sheet : SheetT.Model) =
     |> List.distinct
     |> List.length
 
+
+
+// function 11 : Sum of wiring segment length, counting only one when there are N same-net
+// segments overlapping (this is the visible wire length on the sheet). Count over whole sheet
+let wiringSegmentLengthT4R (sheet : SheetT.Model) = 
+    // calculate overall length and remove length of overlapping segments
+    // for each unique pair of segments keep the ones that overlap
+    // for a given segment find out how many overlapping pairs there are
+    // remove n-1 times the length of the segment
+
+    let segments = 
+        sheet.Wire.Wires
+        |> Map.toList
+        |> List.collect (fun (wid, wire) -> getAbsSegments wire)
+        |> List.mapi (fun i s -> (i,s))
+
+    let overlappingLength = 
+        // allDistinctPairs segments
+        // |> List.filter (fun ((i1, seg1),(i2,seg2)) -> 
+        //     seg1.Orientation = seg2.Orientation
+        //     &&
+        //     overlap1D (getFixedCoord seg1) (getFixedCoord seg2)
+        // )
+        // |>   
+
+        ((0, Map.empty),segments)
+        ||> List.fold (fun (i, overlappedMap ) (currId, currSeg) -> 
+                
+            let isSegmentOverlapped segId = 
+                let overlappedSegments = 
+                    Map.toList overlappedMap 
+                    |> List.unzip
+                    |> fst
+
+                List.tryFind (fun index -> index = segId) overlappedSegments
+                |> function
+                | Some _ -> true
+                | None -> false
+            
+            if not <| isSegmentOverlapped i
+            then
+                let unexploredSegments = 
+                    segments[i..]
+                    |> List.filter (fun (segId, seg) -> not <| isSegmentOverlapped segId)
+                
+                let newOverlaps = 
+                    unexploredSegments
+                    |> List.collect (fun (segId2, comparisonSeg) ->
+                        match 
+                            currSeg.Orientation = comparisonSeg.Orientation 
+                            && overlap1D (getFixedCoord currSeg) (getFixedCoord comparisonSeg)
+                        with
+                        | true -> [(segId2, currSeg.Segment.Length)] // this does not take into account segments of different lengths overlapping
+                        | false -> []
+                    )
+
+                (i+1, 
+                (overlappedMap, newOverlaps)
+                ||> List.fold (fun returnMap (segId, overlapLength) ->
+                    Map.add segId (currId, overlapLength) returnMap 
+                ))
+            else 
+                (i+1, overlappedMap)
+        )
+        |> snd 
+        |> Map.toList
+        |> List.unzip |> snd // list of segIds and their length with an occurence for each time they overlap
+        |> (fun uniqueOverlaps ->
+            let counts = List.countBy (fun (segId, _len) -> segId) uniqueOverlaps
+            let distinct = List.distinctBy (fun (segId, _len) -> segId) uniqueOverlaps
+
+            List.zip counts distinct
+            |> List.map (fun ((sid, count),(sid,len)) -> (sid, count, len))
+        )
+        |> List.fold (fun lenAcc (sid,count,len) ->
+            match count with
+            | c when c >= 1 -> lenAcc + len * (float c)
+            | _ -> failwithf "Should not reach this, overlapping segments should have at least 1 overlaps"
+        ) 0.0
+
+    let totalLength = 
+        sheet.Wire.Wires
+        |> Map.toList
+        |> List.map (fun (wid, wire) -> getWireLength wire)
+        |> List.reduce (+)
     
+    totalLength - overlappingLength
