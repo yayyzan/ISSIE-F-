@@ -312,7 +312,7 @@ module BusWireT =
     [<StringEnum>]
     type Orientation = | Vertical | Horizontal
     
-    ///
+    
     type SnapPosition = High | Mid | Low
     
     /// Represents how wires are rendered

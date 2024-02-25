@@ -562,3 +562,4 @@ let segmentIntersectsBoundingBox (box: BoundingBox) segStart segEnd =
         Some <| findPerpendicularDistance segStart segEnd ((box.TopLeft + bbBottomRight) * 0.5)
     else
         None
+
