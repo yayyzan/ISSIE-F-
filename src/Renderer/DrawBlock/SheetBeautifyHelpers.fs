@@ -300,3 +300,46 @@ let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
     ) 
     |> List.reduce (+)
 
+// function 13 : 
+// The zero-length segments in a wire with non-zero segments on either side that have 
+// Lengths of opposite signs lead to a wire retracing itself. Note that this can also apply
+// at the end of a wire (where the zero-length segment is one from the end). This is a
+// wiring artifact that should never happen but errors in routing or separation can
+// cause it. Count over the whole sheet. Return from one function a list of all the
+// segments that retrace, and also a list of all the end of wire segments that retrace so
+// far that the next segment (index = 3 or Segments.Length – 4) - starts inside a symbol.
+let getRetraceSegmentsOfWire ( wire : BusWireT.Wire ) = 
+    let numSegments = wire.Segments.Length
+
+    // ((0,[]),wire.Segments)
+    // ||> List.fold (fun (iter,(retraceL : (Segment * Segment * Segment) list)) seg ->
+    //     if iter > 0 && iter < numSegments - 1
+    //     then 
+    //         let prevSeg, nextSeg = (wire.Segments[iter-1], wire.Segments[iter+1])
+    //         let isSegZero = seg.Length = 0
+    //         let oppositeDir = sign prevSeg.Length <> sign nextSeg.Length
+    //         if (isSegZero && oppositeDir)
+    //         then 
+    //             // retrace will occur
+    //             (iter+1,
+    //             List.append [(prevSeg, seg, nextSeg)] retraceL
+    //             )
+    //         else
+    //             (iter+1,retraceL)
+    //     else
+    //         (iter+1,retraceL)
+    // )
+
+    (([],false, wire.Segments), wire.Segments)
+    ||> List.fold (fun (retraceL, endRetrace, remainingSegs) seg ->
+        match remainingSegs with
+        | prev::curr::next::tail -> 
+            let isRetrace = curr.Length = 0 && (sign prev.Length <> sign next.Length)
+            let isFinalSegment = tail.Length = 0
+            let newRetraceL = if isRetrace then retraceL @ [(prev,curr,next)] else retraceL
+            (newRetraceL, isFinalSegment, [curr;next] @ tail)
+        | _ -> (retraceL, endRetrace, [])
+    )
+    |> (fun (retracedSegments, isEndWireRetraced, _state) -> (retracedSegments, isEndWireRetraced))
+
+let getRetraceSegments ( sheet : SheetT.Model ) =
