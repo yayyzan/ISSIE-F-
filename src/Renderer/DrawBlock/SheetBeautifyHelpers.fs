@@ -8,6 +8,7 @@ open Optics
 open Optics.Operators
 open BlockHelpers
 open Helpers
+open BusWire
 
 
 //-----------------------------------------------------------------------------------------------
@@ -309,37 +310,69 @@ let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
 // segments that retrace, and also a list of all the end of wire segments that retrace so
 // far that the next segment (index = 3 or Segments.Length – 4) - starts inside a symbol.
 let getRetraceSegmentsOfWire ( wire : BusWireT.Wire ) = 
-    let numSegments = wire.Segments.Length
-
-    // ((0,[]),wire.Segments)
-    // ||> List.fold (fun (iter,(retraceL : (Segment * Segment * Segment) list)) seg ->
-    //     if iter > 0 && iter < numSegments - 1
-    //     then 
-    //         let prevSeg, nextSeg = (wire.Segments[iter-1], wire.Segments[iter+1])
-    //         let isSegZero = seg.Length = 0
-    //         let oppositeDir = sign prevSeg.Length <> sign nextSeg.Length
-    //         if (isSegZero && oppositeDir)
-    //         then 
-    //             // retrace will occur
-    //             (iter+1,
-    //             List.append [(prevSeg, seg, nextSeg)] retraceL
-    //             )
-    //         else
-    //             (iter+1,retraceL)
-    //     else
-    //         (iter+1,retraceL)
-    // )
-
-    (([],false, wire.Segments), wire.Segments)
-    ||> List.fold (fun (retraceL, endRetrace, remainingSegs) seg ->
+    (([], wire.Segments), wire.Segments)
+    ||> List.fold (fun (retraceL, remainingSegs) seg ->
         match remainingSegs with
         | prev::curr::next::tail -> 
             let isRetrace = curr.Length = 0 && (sign prev.Length <> sign next.Length)
-            let isFinalSegment = tail.Length = 0
             let newRetraceL = if isRetrace then retraceL @ [(prev,curr,next)] else retraceL
-            (newRetraceL, isFinalSegment, [curr;next] @ tail)
-        | _ -> (retraceL, endRetrace, [])
+            (newRetraceL, [curr;next] @ tail)
+        | _ -> (retraceL, [])
     )
-    |> (fun (retracedSegments, isEndWireRetraced, _state) -> (retracedSegments, isEndWireRetraced))
+    |> fst
+    |> function
+    | [] -> None
+    | s -> Some s
+
+let getEndOfWireRetrace (wire : BusWireT.Wire) (model : BusWireT.Model) retraceSegmentList = 
+    let getNewStartPos segIndex posChange = 
+        let oldSeg = getASegmentFromId model (segIndex,wire.WId)
+
+        match oldSeg.Orientation with
+        | Horizontal -> {oldSeg.Start with X = oldSeg.Start.X + posChange }
+        | Vertical -> {oldSeg.Start with Y = oldSeg.Start.Y + posChange }
+
+
+    let startWire = 
+        List.tryHead retraceSegmentList 
+        |> Option.bind (fun (start : Segment,_zero,next) ->
+            if start.Index = 0 
+            then Some [start, getNewStartPos start.Index next.Length] 
+            else None
+        ) |> Option.defaultValue []
+
+    let endWire = 
+        List.tryLast retraceSegmentList 
+        |> Option.bind (fun (prev ,_zero,endSeg : Segment) ->
+            if endSeg.Index = wire.Segments.Length - 1 
+            then Some [endSeg, getNewStartPos endSeg.Index prev.Length] 
+            else None
+        ) |> Option.defaultValue []
+    
+    startWire @ endWire
+
+let startInsideSymbol (sheet : SheetT.Model) startPos = 
+    sheet
+    |> Optic.get SheetT.boundingBoxes_
+    |> Map.toList
+    |> List.map (fun (_cid, bbox) ->
+        overlap2DBox bbox {TopLeft=startPos;W=0;H=0}
+    ) |> List.reduce (||)
 
 let getRetraceSegments ( sheet : SheetT.Model ) =
+    sheet.Wire.Wires
+    |> Map.toList
+    |> List.fold (fun (retL,endOfWireL) (_wId, wire) -> 
+        let retracedSegments = getRetraceSegmentsOfWire wire
+
+        let startInsideSymbol =
+            retracedSegments
+            |> Option.map (fun s -> 
+                s
+                |> getEndOfWireRetrace wire sheet.Wire 
+                |> List.collect (fun (endOfWireS, retractedStartPos) -> if startInsideSymbol sheet retractedStartPos then [endOfWireS] else [])
+            )
+            |> Option.defaultValue []
+
+        (retL @ Option.defaultValue [] retracedSegments,endOfWireL @ startInsideSymbol)
+    ) ([],[])
