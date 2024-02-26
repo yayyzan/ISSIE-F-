@@ -580,7 +580,7 @@ let getScalingFactorAndOffsetCentreGroup
 
 /// Alter position of one symbol as needed in a scaling operation
 let scaleSymbol
-        (xYSC: (float * float) * (float * float))
+        (xYSC: (float * float) * (float * float)) 
         (sym: Symbol)
         : Symbol = 
     let symCentre =  getRotatedSymbolCentre sym
