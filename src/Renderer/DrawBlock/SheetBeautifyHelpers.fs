@@ -208,7 +208,6 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
     // for each unique pair of segments keep the ones that overlap
     // for a given segment find out how many overlapping pairs there are
     // remove n-1 times the length of the segment
-
     let segments = 
         sheet.Wire.Wires
         |> Map.toList
@@ -227,9 +226,7 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
                     |> fst
 
                 List.tryFind (fun index -> index = segId) overlappedSegments
-                |> function
-                | Some _ -> true
-                | None -> false
+                |> function | Some _ -> true | None -> false
             
             if not <| isSegmentOverlapped i
             then
@@ -283,22 +280,13 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
 // function 12 : Number of visible wire right-angles. Count over whole sheet.
 let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
     sheet.Wire.Wires
-    |> Map.values
+    |> Map.keys
     |> Seq.toList
-    |> List.map (fun w ->  
-        ((0, None),getNonZeroAbsSegments w)
-        ||> List.fold (fun (numRightAngles, prevOri) seg -> 
-            (numRightAngles + (
-                match prevOri with
-                | Some ori -> 
-                    if ori <> seg.Orientation
-                    then 1
-                    else 0
-                | None -> 0
-            ), Some seg.Orientation)
-        )
-        |> fst
-    ) 
+    |> List.map (fun wid -> 
+        visibleSegments wid sheet 
+        |> List.length 
+        |> (fun res -> res / 2))
+        // there as many right angles as half the number of visible segments
     |> List.reduce (+)
 
 // function 13 : 
@@ -327,11 +315,9 @@ let getRetraceSegmentsOfWire ( wire : BusWireT.Wire ) =
 let getEndOfWireRetrace (wire : BusWireT.Wire) (model : BusWireT.Model) retraceSegmentList = 
     let getNewStartPos segIndex posChange = 
         let oldSeg = getASegmentFromId model (segIndex,wire.WId)
-
         match oldSeg.Orientation with
         | Horizontal -> {oldSeg.Start with X = oldSeg.Start.X + posChange }
         | Vertical -> {oldSeg.Start with Y = oldSeg.Start.Y + posChange }
-
 
     let startWire = 
         List.tryHead retraceSegmentList 
@@ -359,7 +345,7 @@ let startInsideSymbol (sheet : SheetT.Model) startPos =
         overlap2DBox bbox {TopLeft=startPos;W=0;H=0}
     ) |> List.reduce (||)
 
-let getRetraceSegments ( sheet : SheetT.Model ) =
+let getRetraceSegmentsT6R ( sheet : SheetT.Model ) =
     sheet.Wire.Wires
     |> Map.toList
     |> List.fold (fun (retL,endOfWireL) (_wId, wire) -> 
