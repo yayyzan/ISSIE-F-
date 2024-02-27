@@ -262,7 +262,7 @@ let optimiseSymbol
 /// <param name="symbols"> Selected symbols list</param>
 /// <returns>Bounding Box</returns>
 let getBlock
-        (symbols:Symbol List) :BoundingBox =
+        (symbols:Symbol List) : BoundingBox =
 
     let maxXsym = (List.maxBy (fun (x:Symbol) -> x.Pos.X+(snd (getRotatedHAndW x))) symbols)
     let maxX = maxXsym.Pos.X + (snd (getRotatedHAndW maxXsym))
@@ -579,8 +579,13 @@ let getScalingFactorAndOffsetCentreGroup
     (xSC, ySC)
 
 // ---------------------------------------------------------------------- //
-// ------------------------   Omar Alkhatib   --------------------------- //
+// -------------------    Omar Alkhatib -- oa321    --------------------- //
 // ---------------------------------------------------------------------- //
+
+/// <summary> Scales and offsets a symbol along the X and Y axis, returns the updated symbol</summary>
+/// <param name="xYSC"> (X-scalar, X-Offset), (Y-Scalar, Y-Offset) </param>
+/// <param name="sym"> Current symbol </param>
+/// <returns>Scaled symbol</returns>
 let scaleSymbol
         (xYSC: (float * float) * (float * float))
         (sym: Symbol)
@@ -589,20 +594,28 @@ let scaleSymbol
     let translateFunc scaleFact offsetC coordinate =
             (coordinate - offsetC) * scaleFact + offsetC
 
-    let transformCoordinate (pos: XYPos) =
-        let {X=x; Y=y} = pos
+    let symCentreOffsetFromTopLeft =
+        sym
+        |> getRotatedHAndW
+        |> (fun (x, y) ->
+                {X = x; Y = y} * (1./2.)
+            )
+
+    let transformCoordinate (pos: XYPos) : XYPos =
+        let  ({X=x; Y=y}: XYPos) = pos
         let xScalar, xOffset = fst xYSC
         let yScalar, yOffset = snd xYSC
 
         {
             X = translateFunc xScalar xOffset x
             Y = translateFunc yScalar yOffset y
-        } - pos * (1. / 2.)
+        }
 
     let newCoordinates =
         sym
         |> getRotatedSymbolCentre
         |> transformCoordinate
+        |> (fun coords -> coords - symCentreOffsetFromTopLeft)
 
     sym
     |> Optic.map component_ (fun comp ->
@@ -610,51 +623,66 @@ let scaleSymbol
     |> (fun sym ->
         {sym with Pos = newCoordinates; LabelHasDefaultPos = true})
 
-
+/// <summary>Combine Two maps with the same Key-Value types</summary>
+/// <returns>The combined map</returns>
 let combineMaps mapA mapB =
     (mapA, mapB)
     ||> Map.fold (fun acc k v -> Map.add k v acc)
 
-/// Part of the rotate and scale code
+/// <summary> Applies modifier onto input symbols list, and update them in the model </summary>
+/// <param name="compList"> ComponentId's of the symbols being modified </param>
+/// <param name="model"> Current Symbol Model </param>
+/// <param name="symbols"> Symbols to Modify </param>
+/// <param name="modifySymbolFunc"> Symbol Modifier Function </param>
+/// <returns> Updated Model with Modified Selected Symbols </returns>
+// TODO: This function is only used once in sheetUpdateHelpers and its one pipeline, maybe consider removing ?
+// TODO: Or rename to modifySymbolsInModel, I have not changed the name since its called in another file
 let groupNewSelectedSymsModel
     (compList:ComponentId list)
     (model:SymbolT.Model)
-    (selectedSymbols: Symbol list)
+    (symbols: Symbol list)
     modifySymbolFunc =
 
-    selectedSymbols
+    symbols
     |> List.map modifySymbolFunc
     |> (List.zip compList >> Map.ofList)
     |> combineMaps model.Symbols
-    |> Optic.set symbols_
+    |> (fun newMap -> Optic.set symbols_ newMap model)
 
-
-/// <summary>HLP 23: AUTHOR Ismagilov - Flips a block of symbols, returning the new symbol model</summary>
+/// <summary>Flips a block of symbols, returning the new symbol model</summary>
 /// <param name="compList"> List of ComponentId's of selected components</param>
 /// <param name="model"> Current symbol model</param>
 /// <param name="flip"> Type of flip to do</param>
 /// <returns>New flipped symbol model</returns>
 let flipBlock (compList:ComponentId list) (model:SymbolT.Model) (flip:FlipType) =
-    let selectedSymbols =
-        model.Symbols
-        |> Map.filter (fun cId _ -> List.contains cId compList)
-        |> (fun map -> Seq.toList map.Values)
+    model
+    |> Optic.map symbols_ (fun map ->
+        let selectedSymbols =
+            map
+            |> Map.filter (fun cId _ -> List.contains cId compList)
+            |> (fun map -> Seq.toList map.Values)
 
-    let blockCentre =
+        let blockCentre =
+            selectedSymbols
+            |> getBlock
+            |> (fun block -> block.Centre())
+
         selectedSymbols
-        |> getBlock
-        |> _.Centre()
-
-    selectedSymbols
-    |> List.map (flipSymbolInBlock flip blockCentre)
-    |> (List.zip compList >> Map.ofList)
-    |> combineMaps model.Symbols
-    |> Optic.set symbols_
+        |> List.map (flipSymbolInBlock flip blockCentre)
+        |> (List.zip compList >> Map.ofList)
+        |> combineMaps  map
+    )
 
 
 /// After every model update this updates the "scaling box" part of the model to be correctly
 /// displayed based on whether multiple components are selected and if so what is their "box"
 /// In addition to changing the model directly, cmd may contain messages that make further changes.
+
+/// <summary>Updates the Scaling box of the Sheet Model</summary>
+/// <param name="model"> Current symbol model</param>
+/// <param name="cmd"> Current commands </param>
+/// <returns>Updated Symbol Model, New commands</returns>
+
 let postUpdateScalingBox (model:SheetT.Model, cmd) =
 
     let symbolCmd (msg: SymbolT.Msg) = Elmish.Cmd.ofMsg (ModelType.Msg.Sheet (SheetT.Wire (Symbol msg)))
@@ -698,29 +726,37 @@ let postUpdateScalingBox (model:SheetT.Model, cmd) =
             ButtonList = [buttonSym.Id; rotateDeg270Sym.Id; rotateDeg90Sym.Id];
         }
 
-    let newBoxBound =
+    let newBoxBound : BoundingBox option=
         model
         |> Optic.get SheetT.symbols_
         |> Map.filter (fun cId _ -> List.contains cId selectedComponents)
         |> (fun map -> Seq.toList map.Values)
-        |> getBlock
-
+        |> (fun symbols ->
+            match symbols with
+            | [] | [_]  -> None
+            | _ ->
+                Some (getBlock symbols)
+        )
     let newCommands =
-        [symbolCmd (DeleteSymbols scalingBox.Value.ButtonList);
-        sheetCmd SheetT.UpdateBoundingBoxes]
-        |> List.append [cmd]
-        |> Elmish.Cmd.batch
+        match model.ScalingBox with
+        | Some _ -> [symbolCmd (SymbolT.DeleteSymbols (model.ScalingBox.Value).ButtonList);
+                     sheetCmd SheetT.UpdateBoundingBoxes]
+                    |> List.append [cmd]
+                    |> Elmish.Cmd.batch
+        | None -> cmd
 
-    match selectedComponents.Length < 2, scalingBox with
-    | true, None -> model, cmd
-    | false, Some value when value.ScalingBoxBound = newBoxBound -> model, cmd
-    | true, Some _ -> {model with ScalingBox = None}, newCommands
-    | false, _ ->
-        let initScalingBox = makeNewScalingBox newBoxBound
-        let newCmd = if scalingBox = None then cmd else newCommands
 
-        let newSymbolMap = updateSymbolMap [initScalingBox.ScaleButton;initScalingBox.RotateDeg270Button;initScalingBox.RotateDeg90Button]
+    match newBoxBound, scalingBox with
+    | None, None -> model, cmd
+    | Some newBB, Some scaleBox when scaleBox.ScalingBoxBound = newBB -> model, cmd
+    | None, Some _ ->  {model with ScalingBox = None}, newCommands
+    | Some newBB, _ ->
 
-        model
-        |> Optic.set SheetT.scalingBox_ (Some initScalingBox)
-        |> Optic.set SheetT.symbols_ newSymbolMap, newCmd
+       let initScalingBox = makeNewScalingBox newBB
+       let newCmd = if scalingBox = None then cmd else newCommands
+       let newSymbolMap = updateSymbolMap [initScalingBox.ScaleButton;initScalingBox.RotateDeg270Button;initScalingBox.RotateDeg90Button]
+
+       model
+       |> Optic.set SheetT.scalingBox_ (Some initScalingBox)
+       |> Optic.set SheetT.symbols_ newSymbolMap, newCmd
+
