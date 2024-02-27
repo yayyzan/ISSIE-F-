@@ -153,6 +153,7 @@ let reSizeSymbol (wModel: BusWireT.Model) (symbolToSize: Symbol) (otherSymbol: S
         moveSymbol offset scaledSymbol
     | _ ->
         symbolToSize
+/// START OF MY SECTION
 
 /// For UI to call ResizeSymbol.
 let reSizeSymbolTopLevel
@@ -168,8 +169,7 @@ let reSizeSymbolTopLevel
     BusWireSeparate.routeAndSeparateSymbolWires model' symbolToSize.Id
 
 /// For each edge of the symbol, store a count of how many connections it has to other symbols.
-type SymConnDataT =
-    { ConnMap: Map<ComponentId * Edge, int> }
+type SymConnMapT = Map<ComponentId * Edge, int>
 
 /// If a wire between a target symbol and another symbol connects opposite edges, return the edge that the wire is connected to on the target symbol 
 let tryWireSymOppEdge (wModel: Model) (wire: Wire) (sym: Symbol) (otherSym: Symbol) =
@@ -180,17 +180,16 @@ let tryWireSymOppEdge (wModel: Model) (wire: Wire) (sym: Symbol) (otherSym: Symb
     | true -> Some symEdge
     | _ -> None
 
-let updateOrInsert (symConnData: SymConnDataT) (edge: Edge) (cid: ComponentId) =
-    let m = symConnData.ConnMap
-    let count = Map.tryFind (cid, edge) m |> Option.defaultValue 0 |> (+) 1
-    { ConnMap = Map.add (cid, edge) count m }
+let updateOrInsert (symConnData: SymConnMapT) (edge: Edge) (cid: ComponentId) =
+    let count = Map.tryFind (cid, edge) symConnData |> Option.defaultValue 0 |> (+) 1
+    Map.add (cid, edge) count symConnData
 
-// TODO: this is copied from Sheet.notIntersectingComponents. It requires SheetT.Model, which is not accessible from here. Maybe refactor it.
-let noSymbolOverlap (boxesIntersect: BoundingBox -> BoundingBox -> bool) boundingBoxes sym =
+/// Check if the bounding box of sym overlaps with any of bounding boxes in boundingBoxes
+let noSymbolOverlap boundingBoxes sym =
     let symBB = getSymbolBoundingBox sym
 
     boundingBoxes
-    |> Map.filter (fun sId boundingBox -> boxesIntersect boundingBox symBB && sym.Id <> sId)
+    |> Map.filter (fun sId boundingBox -> sym.Id <> sId && overlap2DBox boundingBox symBB )
     |> Map.isEmpty
 
 /// Finds the optimal size and position for the selected symbol w.r.t. to its surrounding symbols.
@@ -201,7 +200,7 @@ let optimiseSymbol
     : BusWireT.Model =
 
     // If a wire connects the target symbol to another symbol, note which edge it is connected to
-    let updateData (symConnData: SymConnDataT) _ (wire: Wire) =
+    let updateData (symConnData: SymConnMapT) _ (wire: Wire) =
         let symS, symT = getSourceSymbol wModel wire, getTargetSymbol wModel wire
 
         let otherSymbol =
@@ -220,17 +219,16 @@ let optimiseSymbol
         | None -> symConnData 
 
     // Look through all wires to build up SymConnDataT.
-    let symConnData = ({ ConnMap = Map.empty }, wModel.Wires) ||> Map.fold updateData
+    let symConnMap = (Map.empty, wModel.Wires) ||> Map.fold updateData
 
     let tryResize (symCount: ((ComponentId * Edge) * int) array) sym =
 
         let alignSym (sym: Symbol) (otherSym: Symbol) =
             let resizedSym = reSizeSymbol wModel sym otherSym
-            let noOverlap = noSymbolOverlap DrawHelpers.boxesIntersect boundingBoxes resizedSym
 
-            match noOverlap with
-            | true -> true, resizedSym
-            | _ -> false, sym
+            if noSymbolOverlap boundingBoxes resizedSym
+            then true, resizedSym
+            else false, sym
 
         let folder (hAligned, vAligned, sym) ((cid, edge), _) =
             let otherSym = Optic.get (symbolOf_ cid) wModel       
@@ -249,7 +247,7 @@ let optimiseSymbol
 
     let scaledSymbol =
         let symCount =
-            Map.toArray symConnData.ConnMap
+            Map.toArray symConnMap
             |> Array.filter (fun (_, count) -> count > 1)
             |> Array.sortByDescending snd
 
@@ -257,6 +255,8 @@ let optimiseSymbol
 
     let model' = Optic.set (symbolOf_ symbol.Id) scaledSymbol wModel
     BusWireSeparate.routeAndSeparateSymbolWires model' symbol.Id
+
+/// END OF MY SECTION
 
 /// <summary>HLP 23: AUTHOR Ismagilov - Get the bounding box of multiple selected symbols</summary>
 /// <param name="symbols"> Selected symbols list</param>
