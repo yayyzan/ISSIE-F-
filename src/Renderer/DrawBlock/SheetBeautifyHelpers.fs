@@ -238,14 +238,13 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
 // function 12 : Number of visible wire right-angles. Count over whole sheet.
 let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
     sheet.Wire.Wires
-    |> Map.keys
-    |> Seq.toList
-    |> List.map (fun wid -> 
-        visibleSegments wid sheet 
+    |> Map.values
+    |> Seq.map (fun wire -> 
+        visibleSegments wire 
         |> List.length 
         |> (fun res -> res / 2))
         // there as many right angles as half the number of visible segments
-    |> List.reduce (+)
+    |> Seq.reduce (+)
 
 // function 13 : 
 // The zero-length segments in a wire with non-zero segments on either side that have 
