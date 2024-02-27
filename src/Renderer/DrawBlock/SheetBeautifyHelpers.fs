@@ -116,21 +116,28 @@ let countSymbolIntersectPairsT1R ( sheet : SheetT.Model ) =
     |> List.length
 
 
-// taken from findWireSymbolIntersection
-let allSymbolBBoxInSheet ( sheet : SheetT.Model) =
-    sheet.Wire.Symbol.Symbols
-    |> Map.values
-    |> Seq.toList
-    |> List.filter (fun s -> s.Annotation = None)
-    |> List.map (fun s -> (s.Component.Type, Symbol.getSymbolBoundingBox s))
-
 // Function 10 : The number of distinct wire visible segments that intersect with one or more symbols. See Tick3.HLPTick3.visibleSegments for a helper. Count over all visible wire segments.
 let countDistinctWireSegmentIntersectSymbolT2R ( sheet : SheetT.Model ) = 
-    allSymbolBBoxInSheet sheet
-    |> List.collect (fun (_compType, bbox) -> 
-        getWiresInBox bbox sheet.Wire 
-        |> List.map (fun (wire, segI) -> wire.Segments[segI])
-    ) 
+    // taken from findWireSymbolIntersection
+    let allSymbolBBoxInSheet ( sheet : SheetT.Model) =
+        sheet.Wire.Symbol.Symbols
+        |> Map.values
+        |> Seq.toList
+        |> List.filter (fun s -> s.Annotation = None)
+        |> List.map (fun s -> (s.Component.Type, Symbol.getSymbolBoundingBox s))
+    
+    let allVisibleSegmentsInSheet  ( sheet : SheetT.Model ) = 
+        sheet.Wire.Wires
+        |> Map.values
+        |> Seq.collect visibleSegments 
+        |> Seq.toList
+
+    List.allPairs (allSymbolBBoxInSheet sheet) (allVisibleSegmentsInSheet sheet)
+    |> List.filter (fun ((_,bb),(startpos,endpos)) -> 
+        match segmentIntersectsBoundingBox bb startpos endpos with
+        | None -> false
+        | Some _ -> true
+    )
     |> List.length
 
 
