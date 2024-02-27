@@ -34,16 +34,10 @@ let visibleSegments (wire : BusWireT.Wire): (XYPos * XYPos) list =
     |> snd
 
 // given a list return all unique pairings of its' elements ingnoring ordering
-let allDistinctPairs (lst : 'a list) = 
-    ((1,[]),lst)
-    ||> List.fold (fun (i,lstAcc) v ->  
-        let updatedList = 
-            lst[i ..]
-            |> List.allPairs [v]
-            |> List.append lstAcc
-        (i+1, updatedList)
-    ) 
-    |> snd
+let rec allDistinctPairs lst =
+    match lst with
+    | [] -> []
+    | h::t -> List.allPairs [h] t @ allDistinctPairs t
 
 
 // had to define another one because predefined one is missing one of the coordinates
@@ -75,6 +69,7 @@ let componentDimension_B1RW = Lens.create getCustomComponentDimensionB1R setCust
 
 // Function 2 : The position of a symbol on a sheet
 let setSymbolPositionB2W = snd SymbolT.posOfSym_
+
 // Function 3 : Read/write the order of ports on a specified side of a symbol
 let orderOfPortsBySide_B3RW (side : Edge) =  
     let orderOfEdge_ = 
@@ -141,39 +136,57 @@ let countDistinctWireSegmentIntersectSymbolT2R ( sheet : SheetT.Model ) =
 
 // function 10 : The number of distinct pairs of segments that cross each other at right angles. 
 // Does not include 0 length segments or segments on same net intersecting at one end, or segments on same net on top of each other. Count over whole sheet.
+type IntresectionType = 
+    | RightAngle 
+    | TJunction
+
 let countDistinctWireSegmentOrthogonalIntersectT3R ( sheet : SheetT.Model) = 
     // get a list of segments which intersect at right angles
-    // for each segment obtain asbolute start and end position and corresponding wire Id and segment 
-    // check orthogonality by comparing each segment with all other segments with opposite orientation and withing the range of that segment
+    // for each segment obtain asbolute start and end position
+    // check orthogonality by checking each distinct segment pair to ensure they have opposite orientation and are within range of each other
+
+    // expects two ASegments of opposite orientation
+    let getIntersectionOpt (seg1 : ASegment) (seg2: ASegment) = 
+        let hori, vert = match seg1.Orientation  with | Horizontal -> (seg1,seg2) | Vertical -> (seg2,seg1)
+        
+        let xmin, xmax = min hori.Start.X hori.End.X, max hori.Start.X hori.End.X 
+        let ymin, ymax = min vert.Start.Y vert.End.Y, max vert.Start.Y vert.End.Y
+
+        let isTJunction = 
+            hori.Start.Y = ymax 
+            || hori.Start.Y = ymin 
+            || vert.Start.X = xmin 
+            || vert.Start.X = xmax
+
+        let intersectRightAngle = 
+            (vert.Start.X <= xmax) && (vert.Start.X >= xmin)
+            &&
+            (hori.Start.Y <= ymax) && (hori.Start.Y >= ymin)
+
+        match intersectRightAngle with
+        | false -> None
+        | true -> 
+            if isTJunction 
+            then Some TJunction
+            else Some RightAngle
 
     let allSegments = 
         sheet.Wire.Wires
         |> Map.toList
-        |> List.collect (fun (wId, wire) -> getAbsSegments wire)
+        |> List.collect (fun (wId, wire) -> getNonZeroAbsSegments wire |> List.map (fun v -> (wire.InputPort, v)))
         |> List.distinct
-        |> List.mapi (fun i seg -> (i, seg))
 
-    allSegments
-    |> List.collect (fun (i1, seg1) ->
-        allSegments
-        |> List.filter (fun (i2, seg2) ->
-            i1 <> i2 
-            &&
-            seg2.Orientation <> seg1.Orientation 
-            &&
-            match seg2.Orientation with
-            | Vertical -> 
-                (seg2.Start.X < seg1.End.X) 
-                && (seg2.Start.X > seg1.Start.X) 
-                && (seg2.Start.Y < seg1.Start.Y)
-            | Horizontal -> 
-                (seg2.Start.Y < seg1.End.Y) 
-                && (seg2.Start.Y > seg1.Start.Y) 
-                && (seg2.Start.X < seg1.Start.X)
-        ) 
-        |> List.map (fun (i2, seg2) -> if i2 < i1 then (i1, i2) else (i2, i1))
+
+    allDistinctPairs allSegments
+    |> List.filter (fun ((iid1,seg1), (iid2,seg2)) ->
+        seg2.Orientation <> seg1.Orientation // to cross at right angles orientation must be opposite
+        &&
+        match getIntersectionOpt seg1 seg2 with
+        | None -> false
+        | Some TJunction -> iid1 <> iid2
+        | Some RightAngle -> true
+
     )
-    |> List.distinct
     |> List.length
 
 
@@ -187,7 +200,7 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
     // group by horizontal or vertical
     // for each one group by either the y or the x according to which one is the constant dimension
     // sort by the start position
-    // fold over keeping track of the current lenght, and the start and end position of the overlapping segment
+    // fold over keeping track of the current length, and the start and end position of the overlapping segment
     //      if the current segment overlaps then the bounds are updated, 
     //      otherwise the length is updated with the length of the segment and the start and end position are set as the current segment
 
@@ -215,6 +228,7 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
             horizontalGroup @ verticalGroup)
         |> List.map (fun (alignedSegs: {| End: float; Start: float |} list) -> 
             let getLen (seg : {| End: float; Start: float |}) = seg.End - seg.Start
+
             ((alignedSegs.Head, getLen alignedSegs.Head), alignedSegs)
             ||> List.fold (fun (overlap, totalLen) seg -> 
                 match overlap1D (overlap.Start, overlap.End) (seg.Start,seg.End) with
