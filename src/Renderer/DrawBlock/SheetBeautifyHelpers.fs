@@ -92,11 +92,13 @@ let getPortPosition (model: SheetT.Model) (portId : string) =
 let getSymbolBoundingBox (symbol: Symbol) = 
     getSymbolBoundingBox symbol
 
+
 // The rotation state of a symbol
 // B7RW
 let symbolRotationState_ = 
     Lens.create (fun symbol -> symbol.STransform.Rotation) 
                 (fun newRotation symbol -> {symbol with STransform = {symbol.STransform with Rotation = newRotation}})
+
 
 // The flip state of a symbol
 // B8RW
@@ -104,3 +106,7 @@ let symbolFlipState_ =
     Lens.create (fun symbol -> symbol.STransform.Flipped) 
                 (fun newFlip symbol -> {symbol with STransform = {symbol.STransform with Flipped = newFlip}})
 
+
+// The number of pairs of symbols that intersect each other
+// T1R
+let countIntersectingSymbolPairs (model: SheetT.Model) = 0
