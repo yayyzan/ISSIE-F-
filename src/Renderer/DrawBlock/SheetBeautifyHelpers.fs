@@ -74,10 +74,7 @@ let componentDimension_B1RW = Lens.create getCustomComponentDimensionB1R setCust
 
 
 // Function 2 : The position of a symbol on a sheet
-let setSymbolPositionB2W (symId : ComponentId) (sheet : SheetT.Model) (newPosition : XYPos) = 
-    let positionLens = (SheetT.symbolOf_ symId) >-> SymbolT.posOfSym_
-    Optic.set positionLens newPosition sheet
-
+let setSymbolPositionB2W = snd SymbolT.posOfSym_
 // Function 3 : Read/write the order of ports on a specified side of a symbol
 let orderOfPortsBySide_B3RW (side : Edge) =  
     let orderOfEdge_ = 
