@@ -217,22 +217,16 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
         |> List.collect visibleSegments 
         |> List.partition (fun (s, e) -> getSegmentOrientation s e = Horizontal)
         |> (fun (hori,vert) ->
-            let horizontalGroup = 
-                hori
-                |> List.groupBy (fun (s : XYPos,_ : XYPos) -> s.Y) 
-                |> List.map (fun (_, lst) -> 
-                    lst 
-                    |> List.sortBy (fun (s,_) -> s.X)
-                    |> List.map (fun (s,e) -> {|Start=s.X;End=e.X|})) 
-            let verticalGroup = 
-                vert
-                |> List.groupBy (fun (s : XYPos,_ : XYPos) -> s.X) 
-                |> List.map (fun (_, lst) -> 
-                    lst 
-                    |> List.sortBy (fun (s,_) -> s.Y)
-                    |> List.map (fun (s,e) -> {|Start=s.Y;End=e.Y|}))
 
-            horizontalGroup @ verticalGroup)
+            let groupByOri fixedVal varVal = 
+                List.groupBy (fun (s : XYPos,_ : XYPos) -> fixedVal s) 
+                >> List.map (fun (_, lst) -> 
+                    lst 
+                    |> List.sortBy (fun (s,_) -> varVal s)
+                    |> List.map (fun (s,e) -> {|Start=varVal s;End=varVal s|})) 
+
+            groupByOri (_.Y) (_.X) hori @ groupByOri (_.X) (_.Y) vert
+        )
         |> List.map (fun (alignedSegs: {| End: float; Start: float |} list) -> 
             let getLen (seg : {| End: float; Start: float |}) = seg.End - seg.Start
 
