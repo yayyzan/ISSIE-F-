@@ -11,47 +11,27 @@ open Helpers
 open BusWire
 
 
-//-----------------------------------------------------------------------------------------------
-// visibleSegments is included here as ahelper for info, and because it is needed in project work
-//-----------------------------------------------------------------------------------------------
+let visibleSegments (wire : BusWireT.Wire): (XYPos * XYPos) list =
 
-/// The visible segments of a wire, as a list of vectors, from source end to target end.
-/// Note that in a wire with n segments a zero length (invisible) segment at any index [1..n-2] is allowed 
-/// which if present causes the two segments on either side of it to coalesce into a single visible segment.
-/// A wire can have any number of visible segments - even 1.
-let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
+    let tryCoalesceAboutIndex ((remainingSegs : ASegment List, coalescedSegs : (XYPos * XYPos) list)) (_)  =
+        match remainingSegs with
+        | prev::curr::next::tail -> 
+            if curr.IsZero
+            then 
+                let coalescedSeg = (prev.Start, next.End)
+                (tail, coalescedSegs @ [coalescedSeg])
+            else        
+                ([curr;next] @ tail, coalescedSegs @ [(prev.Start,prev.End)])
+                
+        | seg1::seg2::tail when tail = [] -> ([], coalescedSegs @ [(seg1.Start,seg1.End);(seg2.Start,seg2.End)])
+        | _ -> ([], coalescedSegs)
 
-    let wire = model.Wire.Wires[wId] // get wire from model
-
-    /// helper to match even and off integers in patterns (active pattern)
-    let (|IsEven|IsOdd|) (n: int) = match n % 2 with | 0 -> IsEven | _ -> IsOdd
-
-    /// Convert seg into its XY Vector (from start to end of segment).
-    /// index must be the index of seg in its containing wire.
-    let getSegmentVector (index:int) (seg: BusWireT.Segment) =
-        // The implicit horizontal or vertical direction  of a segment is determined by 
-        // its index in the list of wire segments and the wire initial direction
-        match index, wire.InitialOrientation with
-        | IsEven, BusWireT.Vertical | IsOdd, BusWireT.Horizontal -> {X=0.; Y=seg.Length}
-        | IsEven, BusWireT.Horizontal | IsOdd, BusWireT.Vertical -> {X=seg.Length; Y=0.}
-
-    /// Return a list of segment vectors with 3 vectors coalesced into one visible equivalent
-    /// if this is possible, otherwise return segVecs unchanged.
-    /// Index must be in range 1..segVecs
-    let tryCoalesceAboutIndex (segVecs: XYPos list) (index: int)  =
-        if segVecs[index] =~ XYPos.zero
-        then
-            segVecs[0..index-2] @
-            [segVecs[index-1] + segVecs[index+1]] @
-            segVecs[index+2..segVecs.Length - 1]
-        else
-            segVecs
-
-    wire.Segments
-    |> List.mapi getSegmentVector
+    wire
+    |> getAbsSegments
     |> (fun segVecs ->
-            (segVecs,[1..segVecs.Length-2])
+            ((segVecs,[]),segVecs)
             ||> List.fold tryCoalesceAboutIndex)
+    |> snd
 
 // given a list return all unique pairings of its' elements ingnoring ordering
 let allDistinctPairs (lst : 'a list) = 
@@ -204,78 +184,56 @@ let countDistinctWireSegmentOrthogonalIntersectT3R ( sheet : SheetT.Model) =
 // function 11 : Sum of wiring segment length, counting only one when there are N same-net
 // segments overlapping (this is the visible wire length on the sheet). Count over whole sheet
 let wiringSegmentLengthT4R (sheet : SheetT.Model) = 
-    // calculate overall length and remove length of overlapping segments
-    // for each unique pair of segments keep the ones that overlap
-    // for a given segment find out how many overlapping pairs there are
-    // remove n-1 times the length of the segment
-    let segments = 
-        sheet.Wire.Wires
-        |> Map.toList
-        |> List.collect (fun (wid, wire) -> getAbsSegments wire)
-        |> List.mapi (fun i s -> (i,s))
+    // loop over all wires
+    // group wires by same source port
+    // extract visible segments for all such wires
+    // group by horizontal or vertical
+    // for each one group by either the y or the x according to which one is the constant dimension
+    // sort by the start position
+    // fold over keeping track of the current lenght, and the start and end position of the overlapping segment
+    //      if the current segment overlaps then the bounds are updated, 
+    //      otherwise the length is updated with the length of the segment and the start and end position are set as the current segment
 
-    let overlappingLength = 
+    let getNonOverlappedWireLength (_inPort, wires : BusWireT.Wire list) : float =
+        
+        wires
+        |> List.collect visibleSegments 
+        |> List.partition (fun (s, e) -> getSegmentOrientation s e = Horizontal)
+        |> (fun (hori,vert) ->
+            let horizontalGroup = 
+                hori
+                |> List.groupBy (fun (s : XYPos,_ : XYPos) -> s.Y) 
+                |> List.map (fun (_, lst) -> 
+                    lst 
+                    |> List.sortBy (fun (s,_) -> s.X)
+                    |> List.map (fun (s,e) -> {|Start=s.X;End=e.X|})) 
+            let verticalGroup = 
+                vert
+                |> List.groupBy (fun (s : XYPos,_ : XYPos) -> s.X) 
+                |> List.map (fun (_, lst) -> 
+                    lst 
+                    |> List.sortBy (fun (s,_) -> s.Y)
+                    |> List.map (fun (s,e) -> {|Start=s.Y;End=e.Y|}))
 
-        ((0, Map.empty),segments)
-        ||> List.fold (fun (i, overlappedMap ) (currId, currSeg) -> 
-                
-            let isSegmentOverlapped segId = 
-                let overlappedSegments = 
-                    Map.toList overlappedMap 
-                    |> List.unzip
-                    |> fst
-
-                List.tryFind (fun index -> index = segId) overlappedSegments
-                |> function | Some _ -> true | None -> false
-            
-            if not <| isSegmentOverlapped i
-            then
-                let unexploredSegments = 
-                    segments[i..]
-                    |> List.filter (fun (segId, seg) -> not <| isSegmentOverlapped segId)
-                
-                let newOverlaps = 
-                    unexploredSegments
-                    |> List.collect (fun (segId2, comparisonSeg) ->
-                        match 
-                            currSeg.Orientation = comparisonSeg.Orientation 
-                            && overlap1D (getFixedCoord currSeg) (getFixedCoord comparisonSeg)
-                        with
-                        | true -> [(segId2, currSeg.Segment.Length)] // this does not take into account segments of different lengths overlapping
-                        | false -> []
-                    )
-
-                (i+1, 
-                (overlappedMap, newOverlaps)
-                ||> List.fold (fun returnMap (segId, overlapLength) ->
-                    Map.add segId (currId, overlapLength) returnMap 
-                ))
-            else 
-                (i+1, overlappedMap)
+            horizontalGroup @ verticalGroup)
+        |> List.map (fun (alignedSegs: {| End: float; Start: float |} list) -> 
+            let getLen (seg : {| End: float; Start: float |}) = seg.End - seg.Start
+            ((alignedSegs.Head, getLen alignedSegs.Head), alignedSegs)
+            ||> List.fold (fun (overlap, totalLen) seg -> 
+                match overlap1D (overlap.Start, overlap.End) (seg.Start,seg.End) with
+                | true ->  ({| Start = min overlap.Start seg.Start; End = max overlap.End seg.End |}, totalLen)
+                | false -> (seg, totalLen + getLen overlap)
+            ) |> snd
         )
-        |> snd 
-        |> Map.toList
-        |> List.unzip |> snd // list of segIds and their length with an occurence for each time they overlap
-        |> (fun uniqueOverlaps ->
-            let counts = List.countBy (fun (segId, _len) -> segId) uniqueOverlaps
-            let distinct = List.distinctBy (fun (segId, _len) -> segId) uniqueOverlaps
-
-            List.zip counts distinct
-            |> List.map (fun ((sid, count),(sid,len)) -> (sid, count, len))
-        )
-        |> List.fold (fun lenAcc (sid,count,len) ->
-            match count with
-            | c when c >= 1 -> lenAcc + len * (float c)
-            | _ -> failwithf "Should not reach this, overlapping segments should have at least 1 overlaps"
-        ) 0.0
-
-    let totalLength = 
-        sheet.Wire.Wires
-        |> Map.toList
-        |> List.map (fun (wid, wire) -> getWireLength wire)
         |> List.reduce (+)
-    
-    totalLength - overlappingLength
+
+    sheet
+    |> Optic.get SheetT.wires_
+    |> Map.values 
+    |> Seq.toList
+    |> List.groupBy (_.InputPort)
+    |> List.map getNonOverlappedWireLength
+    |> List.reduce (+)
 
 // function 12 : Number of visible wire right-angles. Count over whole sheet.
 let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
@@ -345,6 +303,7 @@ let startInsideSymbol (sheet : SheetT.Model) startPos =
         overlap2DBox bbox {TopLeft=startPos;W=0;H=0}
     ) |> List.reduce (||)
 
+// TODO make getEndOfWireRetrace return something nicer, and add checks for entire segment intersection with other symbol bboxes, not just the start position
 let getRetraceSegmentsT6R ( sheet : SheetT.Model ) =
     sheet.Wire.Wires
     |> Map.toList
