@@ -115,17 +115,16 @@ let countSymbolIntersectPairsT1R ( sheet : SheetT.Model ) =
     |> List.filter (fun ((n1, box1),(n2,box2)) -> (n1 <> n2) && BlockHelpers.overlap2DBox box1 box2)
     |> List.length
 
+// taken from findWireSymbolIntersection
+let allSymbolBBoxInSheet ( sheet : SheetT.Model) =
+    sheet.Wire.Symbol.Symbols
+    |> Map.values
+    |> Seq.toList
+    |> List.filter (fun s -> s.Annotation = None)
+    |> List.map (fun s -> (s.Component.Type, Symbol.getSymbolBoundingBox s))
 
 // Function 10 : The number of distinct wire visible segments that intersect with one or more symbols. See Tick3.HLPTick3.visibleSegments for a helper. Count over all visible wire segments.
 let countDistinctWireSegmentIntersectSymbolT2R ( sheet : SheetT.Model ) = 
-    // taken from findWireSymbolIntersection
-    let allSymbolBBoxInSheet ( sheet : SheetT.Model) =
-        sheet.Wire.Symbol.Symbols
-        |> Map.values
-        |> Seq.toList
-        |> List.filter (fun s -> s.Annotation = None)
-        |> List.map (fun s -> (s.Component.Type, Symbol.getSymbolBoundingBox s))
-    
     let allVisibleSegmentsInSheet  ( sheet : SheetT.Model ) = 
         sheet.Wire.Wires
         |> Map.values
@@ -281,54 +280,81 @@ let getRetraceSegmentsOfWire ( wire : BusWireT.Wire ) =
     | [] -> None
     | s -> Some s
 
-let getEndOfWireRetrace (wire : BusWireT.Wire) (model : BusWireT.Model) retraceSegmentList = 
-    let getNewStartPos segIndex posChange = 
+let getWireEndsRetrace (wire : BusWireT.Wire) (model : BusWireT.Model) retraceSegmentList = 
+    /// Return start end position pair of the coalesced end of wire segment
+    /// if the segment is at the start of the wire, the start position will remain unchanged, and the end will be updated
+    /// the opposite happens for a segment at the end of the wire
+    let getNewPosPair segIndex posChange isStart = 
         let oldSeg = getASegmentFromId model (segIndex,wire.WId)
-        match oldSeg.Orientation with
-        | Horizontal -> {oldSeg.Start with X = oldSeg.Start.X + posChange }
-        | Vertical -> {oldSeg.Start with Y = oldSeg.Start.Y + posChange }
+
+        if isStart 
+        then (oldSeg.Start, addLengthToPos oldSeg.End oldSeg.Orientation posChange) 
+        else (addLengthToPos oldSeg.Start oldSeg.Orientation posChange, oldSeg.End) 
+
 
     let startWire = 
         List.tryHead retraceSegmentList 
-        |> Option.bind (fun (start : Segment,_zero,next) ->
-            if start.Index = 0 
-            then Some [start, getNewStartPos start.Index next.Length] 
+        |> Option.bind (fun (startSeg : Segment,_zero,next) ->
+            if startSeg.Index = 0 
+            then Some (startSeg, getNewPosPair startSeg.Index next.Length true) 
             else None
-        ) |> Option.defaultValue []
+        )
 
     let endWire = 
         List.tryLast retraceSegmentList 
         |> Option.bind (fun (prev ,_zero,endSeg : Segment) ->
             if endSeg.Index = wire.Segments.Length - 1 
-            then Some [endSeg, getNewStartPos endSeg.Index prev.Length] 
+            then Some (endSeg, getNewPosPair endSeg.Index prev.Length false) 
             else None
-        ) |> Option.defaultValue []
+        )
     
-    startWire @ endWire
+    (startWire, endWire)
 
-let startInsideSymbol (sheet : SheetT.Model) startPos = 
-    sheet
-    |> Optic.get SheetT.boundingBoxes_
-    |> Map.toList
+let posInsideAnySymbol (sheet : SheetT.Model) pos = 
+    allSymbolBBoxInSheet sheet
     |> List.map (fun (_cid, bbox) ->
-        overlap2DBox bbox {TopLeft=startPos;W=0;H=0}
+        overlap2DBox bbox {TopLeft=pos;W=1;H=1} // check for intersection with box with 1d bbox
+    ) |> List.reduce (||)
+
+let segIntersectsAnySymbol (sheet : SheetT.Model) (startPos, endPos) = 
+    allSymbolBBoxInSheet sheet
+    |> List.map (fun (_cid, bbox) ->
+        segmentIntersectsBoundingBox bbox startPos endPos
+        |> function | None -> false | Some _ -> true
     ) |> List.reduce (||)
 
 // TODO make getEndOfWireRetrace return something nicer, and add checks for entire segment intersection with other symbol bboxes, not just the start position
 let getRetraceSegmentsT6R ( sheet : SheetT.Model ) =
     sheet.Wire.Wires
     |> Map.toList
-    |> List.fold (fun (retL,endOfWireL) (_wId, wire) -> 
+    |> List.fold (fun (retL,startInSymL, intersectSymL) (_wId, wire) -> 
+
         let retracedSegments = getRetraceSegmentsOfWire wire
 
-        let startInsideSymbol =
+        let (startInsideSymbol, intersectSymbol) =
             retracedSegments
             |> Option.map (fun s -> 
                 s
-                |> getEndOfWireRetrace wire sheet.Wire 
-                |> List.collect (fun (endOfWireS, retractedStartPos) -> if startInsideSymbol sheet retractedStartPos then [endOfWireS] else [])
-            )
-            |> Option.defaultValue []
+                |> getWireEndsRetrace wire sheet.Wire 
+                |> (fun (startSeg, endSeg) ->
+                    let (ssInsideSym, ssIntersectSym) = 
+                        match startSeg with
+                        | None -> ([],[])
+                        | Some (sseg, (sPos, newPos)) -> 
+                            ((if posInsideAnySymbol sheet newPos then [sseg] else [])
+                            , (if segIntersectsAnySymbol sheet (sPos,newPos) then [sseg] else []))
+                    
+                    let (esInsideSym, esIntersectSym) = 
+                        match endSeg with
+                        | None -> ([],[])
+                        | Some (eseg, (newPos, epos)) -> 
+                            ((if posInsideAnySymbol sheet newPos then [eseg] else [])
+                            , (if segIntersectsAnySymbol sheet (newPos,epos) then [eseg] else []))
 
-        (retL @ Option.defaultValue [] retracedSegments,endOfWireL @ startInsideSymbol)
-    ) ([],[])
+                    (ssInsideSym @ esInsideSym, ssIntersectSym @ esIntersectSym)
+                )
+            )
+            |> Option.defaultValue ([],[])
+
+        (retL @ Option.defaultValue [] retracedSegments,startInSymL @ startInsideSymbol, intersectSymL @ intersectSymbol)
+    ) ([],[],[])
