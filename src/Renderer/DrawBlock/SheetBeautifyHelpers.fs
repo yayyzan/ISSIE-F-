@@ -323,8 +323,6 @@ let wireSegmentLength (sheet : SheetT.Model) =
         |> List.collect visibleSegments 
         |> List.partition (fun (s, e) -> getSegmentOrientation s e = Horizontal)
         |> (fun (hori,vert) ->
-            printf "h: %A" hori;
-            printf "v: %A" vert;
             let groupByOri fixedVal varVal = 
                 List.groupBy (fun (s : XYPos,_ : XYPos) -> fixedVal s) 
                 >> List.map (fun (_, lst) -> 
