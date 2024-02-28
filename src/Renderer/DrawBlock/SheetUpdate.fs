@@ -19,6 +19,7 @@ open FSharp.Core
 open Fable.Core.JsInterop
 open BuildUartHelpers
 open Node
+open SheetBeautifyHelpers
 
 module node = Node.Api
 
@@ -190,7 +191,9 @@ let update (msg : Msg) (issieModel : ModelType.Model): ModelType.Model*Cmd<Model
         | Drag -> 
             //printfn "running sheet.update"
             mDragUpdate model mMsg
-        | Up -> mUpUpdate model mMsg
+        | Up -> 
+            printf $">> {(T3R model)}"
+            mUpUpdate model mMsg
         | Move -> mMoveUpdate model mMsg
 
     | UpdateBoundingBoxes ->

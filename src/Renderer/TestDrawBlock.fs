@@ -1,7 +1,7 @@
 ﻿module TestDrawBlock
 open GenerateData
 open Elmish
-
+open SheetBeautifyHelpers
 
 //-------------------------------------------------------------------------------------------//
 //--------Types to represent tests with (possibly) random data, and results from tests-------//
@@ -359,8 +359,9 @@ module HLPTick3 =
                 None
 
         /// Fails all tests: useful to show in sequence all the sheets generated in a test
-        let failOnAllTests (sample: int) _ =
-            Some <| $"Sample {sample}"
+        let failOnAllTests (sample: int) (sheet: SheetT.Model) =
+            // Some <| $"Sample {sample}"
+            Some <| $"{T3R sheet}"
 
         /// Fail when sheet contains a wire segment that overlaps (or goes too close to) a symbol outline  
         let failOnWireIntersectsSymbol (sample: int) (sheet: SheetT.Model) =
@@ -378,9 +379,11 @@ module HLPTick3 =
                 |> Array.toList
                 |> List.mapi (fun n box -> n,box)
             List.allPairs boxes boxes 
-            |> List.exists (fun ((n1,box1),(n2,box2)) -> (n1 <> n2) && BlockHelpers.overlap2DBox box1 box2)
-            |> (function | true -> Some $"Symbol outline intersects another symbol outline in Sample {sample}"
-                         | false -> None)
+            |> List.filter (fun ((n1,box1),(n2,box2)) -> (n1 <> n2) && BlockHelpers.overlap2DBox box1 box2)
+            |> List.length
+            |> (/) 2 // remove dupl
+            |> (function | i when i > 0 -> Some $"{i} symbol overlaps in sample {sample}"
+                         | _ -> None)
 
 
 
@@ -442,7 +445,7 @@ module HLPTick3 =
                 firstSample
                 horizLinePositions
                 makeTest1Circuit
-                Asserts.failOnAllTests
+                Asserts.failOnAllTests 
                 dispatch
             |> recordPositionInTest testNum dispatch
 
