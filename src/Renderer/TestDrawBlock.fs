@@ -1,4 +1,5 @@
 ﻿module TestDrawBlock
+open CommonTypes
 open GenerateData
 open Elmish
 
@@ -43,7 +44,7 @@ module TestLib =
         with
             | e ->
                 Error ($"Exception when running {name}\n" + e.StackTrace)
-            
+
     /// Run the Test samples from 0 up to test.Size - 1.
     /// The return list contains all failures or exceptions: empty list => everything has passed.
     /// This will always run to completion: use truncate if text.Samples.Size is too large.
@@ -52,7 +53,7 @@ module TestLib =
         |> List.map (fun n ->
                 catchException $"generating test {n} from {test.Name}" test.Samples.Data n
                 |> (fun res -> n,res)
-           )           
+           )
         |> List.collect (function
                             | n, Error mess -> [n, Exception mess]
                             | n, Ok sample ->
@@ -60,16 +61,16 @@ module TestLib =
                                 | Ok None -> []
                                 | Ok (Some failure) -> [n,Fail failure]
                                 | Error (mess) -> [n,Exception mess])
-        |> (fun resL ->                
+        |> (fun resL ->
                 {
                     TestName = test.Name
                     FirstSampleTested = test.StartFrom
                     TestData = test.Samples
                     TestErrors =  resL
                 })
- 
- 
-            
+
+
+
 (******************************************************************************************
    This submodule contains a set of functions that enable random data generation
    for property-based testing of Draw Block wire routing functions.
@@ -92,7 +93,7 @@ module HLPTick3 =
     open GenerateData
     open TestLib
 
-    /// create an initial empty Sheet Model 
+    /// create an initial empty Sheet Model
     let initSheetModel = DiagramMainView.init().Sheet
 
     /// Optic to access SheetT.Model from Issie Model
@@ -111,7 +112,7 @@ module HLPTick3 =
     /// Used throughout to compare labels since these are case invariant "g1" = "G1"
     let caseInvariantEqual str1 str2 =
         String.toUpper str1 = String.toUpper str2
- 
+
 
     /// Identify a port from its component label and number.
     /// Usually both an input and output port will mathc this, so
@@ -130,7 +131,7 @@ module HLPTick3 =
     //-----------------------------------------------------------------------------------------------
 
     /// The visible segments of a wire, as a list of vectors, from source end to target end.
-    /// Note that in a wire with n segments a zero length (invisible) segment at any index [1..n-2] is allowed 
+    /// Note that in a wire with n segments a zero length (invisible) segment at any index [1..n-2] is allowed
     /// which if present causes the two segments on either side of it to coalesce into a single visible segment.
     /// A wire can have any number of visible segments - even 1.
     let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
@@ -143,7 +144,7 @@ module HLPTick3 =
         /// Convert seg into its XY Vector (from start to end of segment).
         /// index must be the index of seg in its containing wire.
         let getSegmentVector (index:int) (seg: BusWireT.Segment) =
-            // The implicit horizontal or vertical direction  of a segment is determined by 
+            // The implicit horizontal or vertical direction  of a segment is determined by
             // its index in the list of wire segments and the wire initial direction
             match index, wire.InitialOrientation with
             | IsEven, BusWireT.Vertical | IsOdd, BusWireT.Horizontal -> {X=0.; Y=seg.Length}
@@ -174,9 +175,9 @@ module HLPTick3 =
     module Builder =
 
 
-                
 
-            
+
+
 
 
 
@@ -199,10 +200,10 @@ module HLPTick3 =
                 |> Optic.set symbolModel_ symModel
                 |> SheetUpdateHelpers.updateBoundingBoxes // could optimise this by only updating symId bounding boxes
                 |> Ok
-        
 
 
-    
+
+
         /// Place a new symbol onto the Sheet with given position and scaling (use default scale if this is not specified).
         /// The ports on the new symbol will be determined by the input and output components on some existing sheet in project.
         /// Return error if symLabel is not unique on sheet, or ccSheetName is not the name of some other sheet in project.
@@ -216,7 +217,7 @@ module HLPTick3 =
                     : Result<SheetT.Model, string> =
            let symbolMap = model.Wire.Symbol.Symbols
            if caseInvariantEqual ccSheetName project.OpenFileName then
-                Error "Can't create custom component with name same as current opened sheet"        
+                Error "Can't create custom component with name same as current opened sheet"
             elif not <| List.exists (fun (ldc: LoadedComponent) -> caseInvariantEqual ldc.Name ccSheetName) project.LoadedComponents then
                 Error "Can't create custom component unless a sheet already exists with smae name as ccSheetName"
             elif symbolMap |> Map.exists (fun _ sym ->  caseInvariantEqual sym.Component.Label symLabel) then
@@ -232,8 +233,8 @@ module HLPTick3 =
                         Description = None
                     }
                 placeSymbol symLabel (Custom ccType) position model
-            
-        
+
+
 
         // Rotate a symbol
         let rotateSymbol (symLabel: string) (rotate: Rotation) (model: SheetT.Model) : (SheetT.Model) =
@@ -260,7 +261,7 @@ module HLPTick3 =
                     | PortType.Output -> List.tryItem symPort.PortNumber sym.Component.OutputPorts
                     |> function | Some port -> Ok port.Id
                                 | None -> Error $"Can't find {portType} port {symPort.PortNumber} on component {symPort.Label}")
-            
+
             match getPortId PortType.Input target, getPortId PortType.Output source with
             | Error e, _ | _, Error e -> Error e
             | Ok inPort, Ok outPort ->
@@ -272,7 +273,7 @@ module HLPTick3 =
                      model
                      |> Optic.set (busWireModel_ >-> BusWireT.wireOf_ newWire.WId) newWire
                      |> Ok
-            
+
 
         /// Run the global wire separation algorithm (should be after all wires have been placed and routed)
         let separateAllWires (model: SheetT.Model) : SheetT.Model =
@@ -329,6 +330,21 @@ module HLPTick3 =
         fromList [-100..20..100]
         |> map (fun n -> middleOfSheet + {X=float n; Y=0.})
 
+    let deviatedPositions =
+        randomInt -100 1 100
+        |> map (fun n ->  (float n) / 10.)
+        |> map (fun n -> middleOfSheet + {X=200; Y=n})
+
+    // TODO: Make a more interesting circuit, i.e. not just a DFF start using custom components and multiple wires
+    // This is just a starter to get the tests working
+    let makeNearStraightCircuit (deviated: XYPos) = // D1T
+        initSheetModel
+        |> placeSymbol "DFF1" DFF deviated
+        |> Result.bind (placeSymbol "FF1" DFF middleOfSheet)
+        |> Result.bind (placeWire (portOf "FF1" 0) (portOf "DFF1" 0))
+        |> getOkOrFail
+
+
     /// demo test circuit consisting of a DFF & And gate
     let makeTest1Circuit (andPos:XYPos) =
         initSheetModel
@@ -346,7 +362,7 @@ module HLPTick3 =
 
 
     module Asserts =
-
+        open SheetBeautifyHelpers
         (* Each assertion function from this module has as inputs the sample number of the current test and the corresponding schematic sheet.
            It returns a boolean indicating (true) that the test passes or 9false) that the test fails. The sample numbr is included to make it
            easy to document tests and so that any specific sampel schematic can easily be displayed using failOnSampleNumber. *)
@@ -362,7 +378,7 @@ module HLPTick3 =
         let failOnAllTests (sample: int) _ =
             Some <| $"Sample {sample}"
 
-        /// Fail when sheet contains a wire segment that overlaps (or goes too close to) a symbol outline  
+        /// Fail when sheet contains a wire segment that overlaps (or goes too close to) a symbol outline
         let failOnWireIntersectsSymbol (sample: int) (sheet: SheetT.Model) =
             let wireModel = sheet.Wire
             wireModel.Wires
@@ -377,9 +393,21 @@ module HLPTick3 =
                 mapValues sheet.BoundingBoxes
                 |> Array.toList
                 |> List.mapi (fun n box -> n,box)
-            List.allPairs boxes boxes 
+            List.allPairs boxes boxes
             |> List.exists (fun ((n1,box1),(n2,box2)) -> (n1 <> n2) && BlockHelpers.overlap2DBox box1 box2)
             |> (function | true -> Some $"Symbol outline intersects another symbol outline in Sample {sample}"
+                         | false -> None)
+
+        // TODO: Add more assertions to test the circuit
+        // TODO: Integrate the completed SheetBeautifyHelpers module to test the circuit, Hence it might change in the Team Phase
+        let failOnWiresNotStraight (sample: int) (sheet: SheetT.Model) =
+            sheet
+            // TODO: Call D1B here, assuming that D1B is a SheetT.Model -> SheetT.Model function
+            |> Optic.get SheetT.wires_
+            |> mapValuesToList
+            |> List.map (getVisibleSegmentsOfWire >> List.length)
+            |> List.exists (fun n -> n > 1)
+            |> (function | true -> Some "Fail ! There is a wire which is not straightened"
                          | false -> None)
 
 
@@ -401,7 +429,7 @@ module HLPTick3 =
                 | (numb, _) :: _ ->
                     printf $"Sample {numb}"
                     Some { LastTestNumber=testNumber; LastTestSampleIndex= numb})
-            
+
         /// Example test: Horizontally positioned AND + DFF: fail on sample 0
         let test1 testNum firstSample dispatch =
             runTestOnSheets
@@ -446,6 +474,17 @@ module HLPTick3 =
                 dispatch
             |> recordPositionInTest testNum dispatch
 
+        let nearStraightTest (testNum: int) (firstSample: int) (dispatch: Dispatch<Msg>) =
+            runTestOnSheets
+                "NearStraightCircuit DFF + DFF"
+                firstSample
+                deviatedPositions
+                makeNearStraightCircuit
+                Asserts.failOnAllTests
+                dispatch
+            |> recordPositionInTest testNum dispatch
+
+
         /// List of tests available which can be run ftom Issie File Menu.
         /// The first 9 tests can also be run via Ctrl-n accelerator keys as shown on menu
         let testsToRunFromSheetMenu : (string * (int -> int -> Dispatch<Msg> -> Unit)) list =
@@ -455,8 +494,8 @@ module HLPTick3 =
                 "Test1", test1 // example
                 "Test2", test2 // example
                 "Test3", test3 // example
-                "Test4", test4 
-                "Test5", fun _ _ _ -> printf "Test5" // dummy test - delete line or replace by real test as needed
+                "Test4", test4
+                "Test5", nearStraightTest // dummy test - delete line or replace by real test as needed
                 "Test6", fun _ _ _ -> printf "Test6"
                 "Test7", fun _ _ _ -> printf "Test7"
                 "Test8", fun _ _ _ -> printf "Test8"
@@ -475,7 +514,7 @@ module HLPTick3 =
         /// common function to execute any test.
         /// testIndex: index of test in testsToRunFromSheetMenu
         let testMenuFunc (testIndex: int) (dispatch: Dispatch<Msg>) (model: Model) =
-            let name,func = testsToRunFromSheetMenu[testIndex] 
+            let name,func = testsToRunFromSheetMenu[testIndex]
             printf "%s" name
             match name, model.DrawBlockTestState with
             | "Next Test Error", Some state ->
@@ -485,9 +524,9 @@ module HLPTick3 =
                 ()
             | _ ->
                 func testIndex 0 dispatch
-        
 
 
-    
+
+
 
 

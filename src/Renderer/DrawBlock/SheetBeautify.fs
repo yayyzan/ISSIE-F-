@@ -33,4 +33,14 @@ module Constants =
 
 
 
-    
+(*
+My part was to do D1T, the test was make in TestDrawBlock.fs
+
+    1) Sheet maker -> makeNearStraightCircuit
+    2) Testing Assertion -> makeTest1Circuit
+
+    These are starter Contribution to the team, they will be used to test the code written here.
+    Specifically, to test D1B written here. Hence D1B will be called to straighten the circuit created by makeNearStraightCircuit.
+*)
+
+
