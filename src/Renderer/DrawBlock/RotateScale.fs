@@ -581,6 +581,27 @@ let getScalingFactorAndOffsetCentreGroup
 // ---------------------------------------------------------------------- //
 // -------------------    Omar Alkhatib -- oa321    --------------------- //
 // ---------------------------------------------------------------------- //
+(*
+ChangesMade:
+    1)  Cleaned up scaleSymbol to reuse functions rather than repeat code
+
+    2)  Added a combineMaps function to combine two maps with the same Key-Value types
+        This makes the code more readable and easier to understand, since it allows it to be
+        used in a pipeline. Previously this was done using a fold, which was less readable.
+
+    3)  groupNewSelectedSymsModel, and flipBlock previously seperated the symbols into selected, and unselected symbols
+        and then combined them at the end. This was changed to combine the modified map the the main map (model.Symbols) directly.
+        This can be done since Map.add will add the element if it doesnt exist (which will not happen since selected symbols
+        will exist in the map), and if it does exist it will update the value.
+
+    4) PostUpdateScalingBox was originally one single massive If-Else statement, which was hard to read and understand.
+        This was changed to use pattern matching, and used the Issie transforms to move repeated code outside the match statement.
+        The If-Else statement is replaced with a single match statement at the bottom which applies the same logic and returns
+        the updated model and commands.
+*)
+
+
+
 
 /// <summary> Scales and offsets a symbol along the X and Y axis, returns the updated symbol</summary>
 /// <param name="xYSC"> (X-scalar, X-Offset), (Y-Scalar, Y-Offset) </param>
