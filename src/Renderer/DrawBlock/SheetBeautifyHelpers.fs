@@ -151,7 +151,8 @@ let countDistinctWireSegmentOrthogonalIntersectT3R ( sheet : SheetT.Model) =
     // for each segment obtain asbolute start and end position
     // check orthogonality by checking each distinct segment pair to ensure they have opposite orientation and are within range of each other
 
-    // expects two ASegments of opposite orientation
+    /// Returns an option that indicated whether there is an intersection, and the position of said intersection
+    /// Expects two ASegments of opposite orientation
     let getIntersectionOpt (seg1 : ASegment) (seg2: ASegment) = 
         let hori, vert = match seg1.Orientation  with | Horizontal -> (seg1,seg2) | Vertical -> (seg2,seg1)
         
@@ -169,30 +170,34 @@ let countDistinctWireSegmentOrthogonalIntersectT3R ( sheet : SheetT.Model) =
             &&
             (hori.Start.Y <= ymax) && (hori.Start.Y >= ymin)
 
-        match intersectRightAngle with
+        (match intersectRightAngle with
         | false -> None
         | true -> 
             if isTJunction 
             then Some TJunction
             else Some RightAngle
+        , {X=vert.Start.X;Y=hori.Start.Y})
 
     let allSegments = 
         sheet.Wire.Wires
         |> Map.toList
-        |> List.collect (fun (wId, wire) -> getNonZeroAbsSegments wire |> List.map (fun v -> (wire.InputPort, v)))
-        |> List.distinct
+        |> List.collect (fun (wId, wire) -> getNonZeroAbsSegments wire |> List.map (fun v -> (wire.OutputPort, v)))
+        |> List.distinctBy (fun (netid, seg) -> (netid,seg.Start,seg.End))
 
 
     allDistinctPairs allSegments
-    |> List.filter (fun ((iid1,seg1), (iid2,seg2)) ->
-        seg2.Orientation <> seg1.Orientation // to cross at right angles orientation must be opposite
-        &&
-        match getIntersectionOpt seg1 seg2 with
-        | None -> false
-        | Some TJunction -> iid1 <> iid2
-        | Some RightAngle -> true
-
+    |> List.collect (fun ((netId1,seg1), (netId2,seg2)) ->
+        if seg2.Orientation <> seg1.Orientation // to cross at right angles orientation must be opposite
+        then
+            match getIntersectionOpt seg1 seg2 with
+            | None, _ -> []
+            | Some TJunction, intPos -> if netId1 <> netId2 then [intPos] else [] 
+            | Some RightAngle, intPos -> [intPos]
+        else
+            []
     )
+    // remove any overlapping intersections
+    |> List.distinct
     |> List.length
 
 
@@ -242,7 +247,7 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
     |> Optic.get SheetT.wires_
     |> Map.values 
     |> Seq.toList
-    |> List.groupBy (_.InputPort)
+    |> List.groupBy (_.OutputPort)
     |> List.map getNonOverlappedWireLength
     |> List.reduce (+)
 
@@ -323,7 +328,6 @@ let segIntersectsAnySymbol (sheet : SheetT.Model) (startPos, endPos) =
         |> function | None -> false | Some _ -> true
     ) |> List.reduce (||)
 
-// TODO make getEndOfWireRetrace return something nicer, and add checks for entire segment intersection with other symbol bboxes, not just the start position
 let getRetraceSegmentsT6R ( sheet : SheetT.Model ) =
     sheet.Wire.Wires
     |> Map.toList
