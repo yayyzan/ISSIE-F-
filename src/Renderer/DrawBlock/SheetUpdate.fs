@@ -190,7 +190,7 @@ let update (msg : Msg) (issieModel : ModelType.Model): ModelType.Model*Cmd<Model
         | Drag -> 
             //printfn "running sheet.update"
             mDragUpdate model mMsg
-        | Up -> mUpUpdate model mMsg
+        | Up -> printf $"Num visSeg Overlapping symbol = {SheetBeautifyHelpers.countIntersectingSymbolPairs model}."; mUpUpdate model mMsg
         | Move -> mMoveUpdate model mMsg
 
     | UpdateBoundingBoxes ->
