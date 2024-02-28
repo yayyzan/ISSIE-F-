@@ -105,6 +105,10 @@ let rotationOfSymbol_B7RW = stransform_ >-> rotation_
 let flipOfSymbol_B8RW = stransform_ >-> flip_
 
 // Function 9 : The number of pairs of symbols that intersect each other. See Tick3 for a related function. Count over all pairs of symbols
+
+/// <summary> Count the number of distinct pairs of Symbols which intersect in a sheet </summary>
+/// <param name="sheet"> The sheet Model containing the current state of the sheet</param>
+/// <returns> The final state value </returns>
 let countSymbolIntersectPairsT1R ( sheet : SheetT.Model ) = 
     let boxes = 
         mapValues sheet.BoundingBoxes
@@ -229,7 +233,7 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
                     |> List.sortBy (fun (s,_) -> varVal s)
                     |> List.map (fun (s,e) -> {|Start=varVal s;End=varVal s|})) 
 
-            groupByOri (_.Y) (_.X) hori @ groupByOri (_.X) (_.Y) vert
+            groupByOri (fun p -> p.Y) (fun p -> p.X) hori @ groupByOri (fun p -> p.X) (fun p -> p.Y) vert
         )
         |> List.map (fun (alignedSegs: {| End: float; Start: float |} list) -> 
             let getLen (seg : {| End: float; Start: float |}) = seg.End - seg.Start
@@ -247,7 +251,7 @@ let wiringSegmentLengthT4R (sheet : SheetT.Model) =
     |> Optic.get SheetT.wires_
     |> Map.values 
     |> Seq.toList
-    |> List.groupBy (_.OutputPort)
+    |> List.groupBy (fun w -> w.OutputPort)
     |> List.map getNonOverlappedWireLength
     |> List.reduce (+)
 
