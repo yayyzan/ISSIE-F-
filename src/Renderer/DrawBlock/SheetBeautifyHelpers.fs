@@ -178,8 +178,15 @@ let mapValuesToList (map: Map<'a,'b> ) =
     Seq.toList map.Values
 
 
-let getAbsSegmentLength (aSegment: ASegment) =
-    squaredDistance aSegment.Start aSegment.End
+/// <summary> Returns the Lengt of an ASegment </summary>
+/// <param name="aSegment"> The ASegment to get the length of </param>
+/// <returns> The length of the ASegment </returns>
+let getAbsSegmentLength (aSegment : ASegment) =
+    let delta = aSegment.End - aSegment.Start
+    let squared = delta.X * delta.X + delta.Y * delta.Y
+    Math.Sqrt squared
+
+
 
 let (|IsEven|IsOdd|) (n: int) = match n % 2 with | 0 -> IsEven | _ -> IsOdd
 
@@ -286,7 +293,7 @@ let removeOverlaps (aSegments: ASegment list) : ASegment list =
             let lastSegment = List.last lst
             match visibleSegmentOverlap visSeg lastSegment WeakOverlap with
             | false -> visSegments @ [visSeg]
-            | true -> visSegments[0..visSegments.Length-2] @ [{visSeg with End = visSeg.End}]
+            | true -> visSegments[0..visSegments.Length-2] @ [{lastSegment with End = visSeg.End}]
     )
 
 (*
@@ -300,8 +307,13 @@ The algorithm being used:
 
     Note that the Algorithm runs on ASegments after the order is corrected.
 *)
+/// <summary> Returns all visible segments from a list of segments </summary>
+/// <remarks> This is done by partitioning the segments by orientation, ordering the segments, and then removing overlaps </remarks>
+/// <param name="aSegments"> The list of ASegments to get the visible segments from </param>
+/// <returns> The visible segments from the list of segments </returns>
 let getVisibleSegments (aSegments: ASegment list) =
     aSegments
+    |> List.map orderASegment    
     |> List.partition (fun visSeg -> visSeg.Orientation = Horizontal)
     |> (fun (hor, vert) -> orderByOrientation hor Horizontal, orderByOrientation vert Vertical)
     |> (fun (hor, vert) -> List.collect removeOverlaps hor @ List.collect removeOverlaps vert)
@@ -314,17 +326,17 @@ let getVisibleSegments (aSegments: ASegment list) =
 let getVisibleSegmentsOfWire (wire: Wire) =
     wire
     |> getNonZeroAbsSegments
-    |> List.map orderASegment
     |> getVisibleSegments
 
 /// <summary> Returns all visible segments in the wire </summary>
+/// <remarks> This function calls getVisible segments twice, once to remove overlaps within the wire (in getVisibleSegmentsOfWire), and another to remove global overlaps </remarks>
 /// <param name="model"> The model to get the segments from </param>
 /// <returns> All visible segments in the model </returns>
 let getAllVisibleSegments (model: SheetT.Model) =
     model
     |> Optic.get SheetT.wires_
     |> mapValuesToList
-    |> List.collect getAbsSegments
+    |> List.collect getVisibleSegmentsOfWire
     |> getVisibleSegments
 
 
@@ -399,18 +411,24 @@ let countNumberOfJunctions (model: SheetT.Model)  = // T3R
 /// <param name="model"> The Sheet model to count over </param>
 /// <returns> The count over the whole sheet </returns>
 
-let getVisibleWireLength (model: SheetT.Model) = // T4R
-    let getASegmentLength (wireNet: Wire list) : float =
+let getVisibleWireLength (model : SheetT.Model) = // T4R
+    let reduceWithDefault def f lst =
+        match lst with
+        | [] -> def
+        | _ -> List.reduce f lst
+
+    let getWireNetLength (wireNet : Wire list) : float =
         wireNet
-        |> List.collect getVisibleSegmentsOfWire
-        |> List.map (fun visSeg -> getAbsSegmentLength visSeg)
-        |> List.reduce (+)
+        |> List.collect getNonZeroAbsSegments
+        |> getVisibleSegments
+        |> List.map getAbsSegmentLength
+        |> reduceWithDefault 0.0 (+)
 
     model
     |> Optic.get SheetT.wire_
     |> getWireNets
-    |> List.map getASegmentLength
-    |> List.reduce (+)
+    |> List.map getWireNetLength
+    |> reduceWithDefault 0.0 (+)
 
 
 /// <summary> Number of visible wire right-angles </summary>
