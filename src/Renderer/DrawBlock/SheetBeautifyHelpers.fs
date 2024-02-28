@@ -293,15 +293,20 @@ let countVisibleRightAngleSegmentIntersection ( sheet : SheetT.Model) =
 /// </returns>
 /// <remarks>
 /// <para>
-/// This function computes the visible wire length on a sheet by summing the lengths of non-overlapping segments for each wire. 
-/// It considers only one segment when multiple segments overlap within the same net, but duplicates the length for overlapping segments belonging to different net.
-/// This follows the assumption that such a case cannot occur as the autoroute prevents such behaviour.
+/// This function considers only one segment when multiple segments overlap within the same net, but duplicates the length for overlapping segments belonging to different nets.
 /// </para>
 /// <para>
-/// Further implementation details can be found in the body of the function
+/// Further implementation details and discussion can be found in the body of the function
 /// </para>
 /// </remarks>
 let wireSegmentLength (sheet : SheetT.Model) = 
+    // Discussion on spec:
+    // This spec decision follows the discussion on edstem where the assumption is that such a case cannot occur
+    // as the autoroute prevents such behaviour.
+    // Changing the function behaviour to ensure all overlapping segments (regardless of whether they belong to the same net)
+    // can be implemented by removing all grouping based on the wire output port
+
+    // Description of implementation algorithm:
     // loop over all wires
     // group wires by same source port
     // extract visible segments for all such wires
@@ -312,7 +317,7 @@ let wireSegmentLength (sheet : SheetT.Model) =
     //      if the current segment overlaps then the bounds are updated, 
     //      otherwise the length is updated with the length of the segment and the start and end position are set as the current segment
 
-    let getNonOverlappedWireLength (_inPort, wires : BusWireT.Wire list) =
+    let getNonOverlappedWireLength (_, wires : BusWireT.Wire list) =
         
         wires
         |> List.collect visibleSegments 
@@ -358,6 +363,7 @@ let wireSegmentLength (sheet : SheetT.Model) =
 /// </summary>
 /// <param name="sheet">The sheet containing wires.</param>
 /// <returns>The total count of visible right angles in the sheet.</returns>
+// TODO FIX THIS BY LOOKING AT ALL VERTICES AND COUNTING THE UNIQUE ONES
 let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
     sheet.Wire.Wires
     |> Map.values
