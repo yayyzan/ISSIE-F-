@@ -163,9 +163,9 @@ let flippedLens_ = Lens.create isSymbolFlipped setSymbolFlip
 
 
 (*
-    In the following seciton, a visible wire is defined as a list of non-zero length segments where the 
+    In the following seciton, a visible wire is defined as a list of non-zero length segments where the
     segments do not overlap. The list is not ordered, i.e it does not follow the (horizontal, vertical, horizantal) order issie wires do.
-    This is not a problem since these functions are all reading from the sheet. i.e they do not ever write a model. These are/ will be used to 
+    This is not a problem since these functions are all reading from the sheet. i.e they do not ever write a model. These are/ will be used to
     test the beutify functions.
 *)
 
@@ -313,7 +313,7 @@ The algorithm being used:
 /// <returns> The visible segments from the list of segments </returns>
 let getVisibleSegments (aSegments: ASegment list) =
     aSegments
-    |> List.map orderASegment    
+    |> List.map orderASegment
     |> List.partition (fun visSeg -> visSeg.Orientation = Horizontal)
     |> (fun (hor, vert) -> orderByOrientation hor Horizontal, orderByOrientation vert Vertical)
     |> (fun (hor, vert) -> List.collect removeOverlaps hor @ List.collect removeOverlaps vert)
@@ -525,7 +525,14 @@ let getRetracingSegments (sheet: SheetT.Model) =
             (([], []), windows)
             ||> List.fold retracingSegmentsFold
         )
-        ||> (fun retraceSeg intersectingRetraces -> retraceSeg.Length, retraceSeg, intersectingRetraces)
+        ||> (fun retraceSeg intersectingRetraces -> retraceSeg, intersectingRetraces)
 
 
-    List.map getRetracingSegments' wires
+    wires
+    |> List.map getRetracingSegments'
+    |> List.unzip
+    |> (fun (retracingSegments, intersectingRetracingSegments) ->
+        List.concat retracingSegments, List.concat intersectingRetracingSegments)
+    |> (fun (retracingSegments, intersectingRetracingSegments) ->
+        retracingSegments.Length, retracingSegments, intersectingRetracingSegments
+    )
