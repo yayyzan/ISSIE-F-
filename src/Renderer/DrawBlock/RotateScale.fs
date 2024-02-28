@@ -1,4 +1,18 @@
-﻿module RotateScale
+﻿// SUMMARY OF THE CHANGES
+// Type Update:
+// Changed the SynConn type from a record to a simple map for improved readability and simplicity.
+// 
+// Refactoring and Streamlining:
+// Refactored the code to remove unnecessary temporary variables and streamline the logic into a pipeline, enhancing code readability and maintainability.
+//
+// Functionality Update:
+// Updated functions to utilize the new SynConnMapT type instead of the previous record, improving consistency and clarity in the codebase.
+//
+// Library Function Usage:
+// Replaced an outdated library function with a more recent and widely used one for checking bounding box overlap, enhancing reliability and maintainability.
+//
+// Further details can be found withing the code prefaced by the string "CHANGE AND EXPLANATION"
+module RotateScale
 open CommonTypes
 open DrawModelType
 open DrawModelType.SymbolT
@@ -166,7 +180,12 @@ let reSizeSymbolTopLevel
     let scaledSymbol = reSizeSymbol wModel symbolToSize otherSymbol
 
     let model' = Optic.set (symbolOf_ symbolToSize.Id) scaledSymbol wModel
+
     BusWireSeparate.routeAndSeparateSymbolWires model' symbolToSize.Id
+
+// CHANGE AND EXPLANATION
+// Update the SynConn Type from a record to a simple map, the record contained a single map field and nothing else, defeating the point of it being a record
+// The advantage in readability provided by a record can just as easily be obatained by simple assigning a type name to the partiuclar map type.
 
 /// For each edge of the symbol, store a count of how many connections it has to other symbols.
 type SymConnMapT = Map<ComponentId * Edge, int>
@@ -180,17 +199,19 @@ let tryWireSymOppEdge (wModel: Model) (wire: Wire) (sym: Symbol) (otherSym: Symb
     | true -> Some symEdge
     | _ -> None
 
+// CHANGE AND EXPLANATION
+// updated the function to use the new SynnConnMapT type instead of the record
+// add a short XML comment to briefly describe the functionality
+
+/// Return an updated map with the count for an edge component tuple incremented 
 let updateOrInsert (symConnData: SymConnMapT) (edge: Edge) (cid: ComponentId) =
     let count = Map.tryFind (cid, edge) symConnData |> Option.defaultValue 0 |> (+) 1
     Map.add (cid, edge) count symConnData
 
-/// Check if the bounding box of sym overlaps with any of bounding boxes in boundingBoxes
-let noSymbolOverlap boundingBoxes sym =
-    let symBB = getSymbolBoundingBox sym
-
-    boundingBoxes
-    |> Map.filter (fun sId boundingBox -> sym.Id <> sId && overlap2DBox boundingBox symBB )
-    |> Map.isEmpty
+// CHANGE AND EXPLANATION
+// refactor most of the code to remove unneccessary temporary variables and streamline everything into a pipeline
+//      this is achieved by rewriting some of the interal helper functions to accept the variables in the pipeline in the correct order
+//      the final section where lenses are used to update the model state use anonymous functions to maintaing the pipeline
 
 /// Finds the optimal size and position for the selected symbol w.r.t. to its surrounding symbols.
 let optimiseSymbol
@@ -198,6 +219,21 @@ let optimiseSymbol
     (symbol: Symbol)
     (boundingBoxes: Map<CommonTypes.ComponentId, BoundingBox>)
     : BusWireT.Model =
+
+    // CHANGE AND EXPLANATION (noSymbolOverlap)
+    // remove a boxes intersect parameter which was being set to DrawHelpers.boxesIntersect
+    // replaced that parameter with overlap2DBox which is a function that checks if two bounding boxes overlap, and seems to be a more recent and more widely used
+    // library function for this particular purpose
+    // function moved inside of the optimiseSymbol as it is the only place it is called in
+    //      by moving it inside of the function, the parameter Bounding boxes can be removed since the value being passed in was not changing
+
+    /// Check if the bounding box of sym overlaps with any of bounding boxes in boundingBoxes
+    let noSymbolOverlap sym =
+        let symBB = getSymbolBoundingBox sym
+
+        boundingBoxes
+        |> Map.filter (fun sId boundingBox -> sym.Id <> sId && overlap2DBox boundingBox symBB )
+        |> Map.isEmpty
 
     // If a wire connects the target symbol to another symbol, note which edge it is connected to
     let updateData (symConnData: SymConnMapT) _ (wire: Wire) =
@@ -218,15 +254,11 @@ let optimiseSymbol
             | None -> symConnData // should not happen
         | None -> symConnData 
 
-    // Look through all wires to build up SymConnDataT.
-    let symConnMap = (Map.empty, wModel.Wires) ||> Map.fold updateData
-
-    let tryResize (symCount: ((ComponentId * Edge) * int) array) sym =
-
+    let tryResize sym (symCount: ((ComponentId * Edge) * int) array)=
         let alignSym (sym: Symbol) (otherSym: Symbol) =
             let resizedSym = reSizeSymbol wModel sym otherSym
 
-            if noSymbolOverlap boundingBoxes resizedSym
+            if noSymbolOverlap resizedSym
             then true, resizedSym
             else false, sym
 
@@ -245,16 +277,16 @@ let optimiseSymbol
         let (_, _, sym') = ((false, false, sym), symCount) ||> Array.fold folder
         sym'
 
-    let scaledSymbol =
-        let symCount =
-            Map.toArray symConnMap
-            |> Array.filter (fun (_, count) -> count > 1)
-            |> Array.sortByDescending snd
-
-        tryResize symCount symbol
-
-    let model' = Optic.set (symbolOf_ symbol.Id) scaledSymbol wModel
-    BusWireSeparate.routeAndSeparateSymbolWires model' symbol.Id
+    (Map.empty, wModel.Wires) 
+    ||> Map.fold updateData
+    |> Map.toArray 
+    |> Array.filter (fun (_, count) -> count > 1)
+    |> Array.sortByDescending snd
+    |> tryResize symbol
+    |> (fun scaledSymbol -> 
+        Optic.set (symbolOf_ symbol.Id) scaledSymbol wModel)
+    |> (fun model' -> 
+        BusWireSeparate.routeAndSeparateSymbolWires model' symbol.Id)
 
 /// END OF MY SECTION
 
