@@ -162,6 +162,14 @@ let flippedLens_ = Lens.create isSymbolFlipped setSymbolFlip
 // ----------------------------------------------------------------------------//
 
 
+(*
+    In the following seciton, a visible wire is defined as a list of non-zero length segments where the 
+    segments do not overlap. The list is not ordered, i.e it does not follow the (horizontal, vertical, horizantal) order issie wires do.
+    This is not a problem since these functions are all reading from the sheet. i.e they do not ever write a model. These are/ will be used to 
+    test the beutify functions.
+*)
+
+
 /// <summary> Gets the values of a map as a list </summary>
 /// <remarks> This is used quite often, it is much better to define it rather than use a lambda everytime </remarks>
 /// <param name="map"> Map of any type </param>
@@ -197,6 +205,8 @@ let improvedOverlap1D ((a1, a2): float * float) ((b1, b2): float * float) (overl
     | StrictOverlap -> a_max > b_min && b_max > a_min
     | WeakOverlap -> a_max >= b_min && b_max >= a_min
 
+
+// As a consequence of adding to overlap1D, i modified the functions that i need in order to use the improved overlap
 let improvedOverlap2D ((a1, a2): XYPos * XYPos) ((b1, b2): XYPos * XYPos) (overlapType: OverlapType) : bool =
     (improvedOverlap1D (a1.X, a2.X) (b1.X, b2.X) overlapType) && (improvedOverlap1D (a1.Y, a2.Y) (b1.Y, b2.Y) overlapType)
 
@@ -219,7 +229,6 @@ let getWiresInBox' (box: BoundingBox) (model: BusWireT.Model) : (Wire * int) lis
     List.map (fun w -> foldOverNonZeroSegs checkOverlapFolder (false, -1) w, w) wires
     |> List.filter (fun l -> fst (fst l))
     |> List.map (fun ((_, index), w) -> w, index)
-
 
 
 
@@ -248,6 +257,10 @@ let orderASegment (aSegment: ASegment) : ASegment =
         | _ -> visSeg
     )
 
+/// <summary> Groups and sorts visible segments by their start position based on the given orientation </summary>
+/// <param name="visSegments"> The list of ASegments to be ordered </param>
+/// <param name="ori"> The orientation (Horizontal or Vertical) to order by </param>
+/// <returns> A list of lists of ASegments, grouped by start position and sorted within each group </returns>
 let orderByOrientation (visSegments: ASegment list) (ori: Orientation) =
        visSegments
        |>   match ori with
@@ -260,6 +273,10 @@ let orderByOrientation (visSegments: ASegment list) (ori: Orientation) =
        )
 
 
+/// <summary> Removes overlapping segments from a list of segments </summary>
+/// <remarks> This is done by folding over the list of segments, and checking if the current segment overlaps with the last segment </remarks>
+/// <param name="aSegments"> The list of ASegments to remove overlaps from </param>
+/// <returns> A list of ASegments with overlaps removed </returns>
 let removeOverlaps (aSegments: ASegment list) : ASegment list =
     ([], aSegments)
     ||> List.fold (fun visSegments visSeg ->
@@ -290,15 +307,19 @@ let getVisibleSegments (aSegments: ASegment list) =
     |> (fun (hor, vert) -> List.collect removeOverlaps hor @ List.collect removeOverlaps vert)
 
 
-/// <summary> Returns the visible ASegments of a wire </summary>
-/// <returns> Non Zero ASegments of a wire with the correct order </returns>
+/// <summary> Returns the non-zero length segments of a wire </summary>
+/// <param name="wire"> The wire to get the segments from </param>
+/// <remarks> This is done by filtering the segments of the wire by length </remarks>
+/// <returns> The non-zero length segments of the wire </returns>
 let getVisibleSegmentsOfWire (wire: Wire) =
     wire
     |> getNonZeroAbsSegments
     |> List.map orderASegment
     |> getVisibleSegments
 
-
+/// <summary> Returns all visible segments in the wire </summary>
+/// <param name="model"> The model to get the segments from </param>
+/// <returns> All visible segments in the model </returns>
 let getAllVisibleSegments (model: SheetT.Model) =
     model
     |> Optic.get SheetT.wires_
@@ -323,7 +344,9 @@ let intersectingSymbolPairs (sheet: SheetT.Model) : int = // T1R
     |> Seq.length
 
 
-// Get Wires by nets, i.e Grouped by the OutputPort
+/// <summary> Returns the wire nets of a BusWire model </summary>
+/// <param name="model"> The BusWire model of the Sheet </param>
+/// <returns> The wire nets of the model </returns>
 let getWireNets (model: BusWireT.Model) : Wire list list =
     model
     |> Optic.get wires_
