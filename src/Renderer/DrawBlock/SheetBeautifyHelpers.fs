@@ -356,3 +356,54 @@ let T3R (sheet: SheetT.Model): int =
   |> List.distinct
   |> printInline
   |> List.length
+
+let T4R (sheet: SheetT.Model) =
+  let netlist = 
+    sheet.Wire.Wires
+    |> Helpers.mapValues
+    |> Seq.toList
+    |> List.groupBy (fun wire -> wire.OutputPort)
+
+  let noNetlistLength =
+    sheet.Wire.Wires
+    |> Helpers.mapValues
+    |> Seq.toList
+    |> List.map (fun (wire: BusWireT.Wire) -> 
+      BlockHelpers.isWireInNet sheet.Wire wire
+      |> function
+      | Some _ -> 0.0 // calculated separately
+      | None -> 
+        wire.Segments
+        |> List.map (fun seg -> seg.Length |> abs)
+        |> List.fold (+) 0.0
+    ) |> List.fold (+) 0.0
+
+  let netlistLength =
+    netlist
+    |> List.map (fun net ->
+      snd net
+      |> fun lst -> 
+        if lst.Length = 1 
+        then 0.0
+        else
+          lst
+          |> List.map BlockHelpers.getNonZeroAbsSegments
+          |> List.concat
+          |> List.distinctBy (fun seg -> seg.Start, seg.End) // remove obvious overlaps
+          |> (fun segs -> 
+            List.fold (fun length (seg: BusWireT.ASegment) -> 
+              segs
+              |> List.tryFind (fun seg' ->
+                // do not double count near T junction
+                seg'.Segment.GetId <> seg.Segment.GetId 
+                && seg'.Segment.Length < seg.Segment.Length
+                && (seg'.Start = seg.Start
+                  || seg'.End = seg.End))
+              |> function
+              | Some dupl -> length + (abs seg.Segment.Length) - (abs dupl.Segment.Length)
+              | None -> length + (abs seg.Segment.Length)
+            ) 0.0 segs
+          )
+    ) 
+    |> List.fold (+) 0.0
+  noNetlistLength + netlistLength
