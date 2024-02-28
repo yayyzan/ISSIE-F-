@@ -293,9 +293,8 @@ let T2R (sheet: SheetT.Model) =
 
 let T3R (sheet: SheetT.Model): int =
   let absSegmentsIntersect (h: BusWireT.ASegment) (v: BusWireT.ASegment): XYPos option =
-    // let res =
       match h.Orientation, v.Orientation with
-      | BusWireT.Horizontal, BusWireT.Vertical -> 
+      | BusWireT.Horizontal, BusWireT.Vertical ->
         let ymin, ymax = min v.Start.Y v.End.Y, max v.Start.Y v.End.Y
         let xmin, xmax = min h.Start.X h.End.X, max h.Start.X h.End.X 
         
@@ -311,49 +310,49 @@ let T3R (sheet: SheetT.Model): int =
     |> Helpers.mapValues
     |> Seq.toList
 
-  wires
-  |> List.fold (fun intersections thisWire ->
-    wires
+  (wires, wires)
+  ||> List.allPairs
+  |> List.fold (fun intersections (firstWire, secondWire) ->
     // remove self intersection
-    // |> List.filter (fun compareWire -> thisWire.WId <> compareWire.WId)
-    |> List.map (fun compareWire ->
-        match 
-          BlockHelpers.isWireInNet sheet.Wire thisWire,
-          BlockHelpers.isWireInNet sheet.Wire compareWire,
-          BlockHelpers.getNonZeroAbsSegments thisWire,
-          BlockHelpers.getNonZeroAbsSegments compareWire
+    if firstWire.WId = secondWire.WId then intersections else
+  
+    match 
+      BlockHelpers.isWireInNet sheet.Wire firstWire,
+      BlockHelpers.isWireInNet sheet.Wire secondWire,
+      BlockHelpers.getNonZeroAbsSegments firstWire,
+      BlockHelpers.getNonZeroAbsSegments secondWire
+    with
+    // Case where both wires do not belong to nets
+    | None, None, aS1, aS2 ->
+      printf $">> 0nl"; (aS1, aS2)
+      ||> List.allPairs
+      |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
+    // | Some nl1, None, _, aSeg | None, Some nl1, aSeg, _ ->
+    | Some nl1, None, _, aSeg ->
+      snd nl1 |> (printf $">> 1nl"; List.map snd)
+      // snd nl1 |> (printf $">> 1nl {snd nl1 |> List.map snd} {aSeg}"; List.map snd)
+      |> List.map BlockHelpers.getNonZeroAbsSegments
+      |> List.concat
+      |> List.distinctBy (fun seg -> seg.Start, seg.End) // remove duped segments
+      |> fun netSegs -> (netSegs, aSeg)
+      ||> List.allPairs
+      |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
+    | None, Some _, _, _ -> [None] // already counted (twice)
+    | Some nl1, Some nl2, aS1, aS2 ->
+        match
+          fst nl1,
+          fst nl2,
+          snd nl1,
+          snd nl2
         with
-        // Case where both wires do not belong to nets
-        | None, None, aS1, aS2 ->
-          printf $">> 0nl"; (aS1, aS2)
-          ||> List.allPairs
-          |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
-        | Some nl1, None, _, aSeg ->
-          snd nl1 |> (printf $">> 1nl"; List.map snd)
-          |> List.map BlockHelpers.getNonZeroAbsSegments
-          |> List.concat
-          |> List.distinct // remove duped segments
-          |> fun netSegs -> (netSegs, aSeg)
-          ||> List.allPairs
-          |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
-          |> printInline
-        | None, Some _, _, _ -> [None] // already counted (twice)
-        | Some nl1, Some nl2, aS1, aS2 ->
-          match
-            fst nl1,
-            fst nl2,
-            snd nl1,
-            snd nl2
-          with
-          // same net
-          | oPort1, oPort2, _, _ when oPort1 = oPort2 -> [None]
-          | _, _, nl1, nl2 -> [None]
-      |> List.choose id
-      |> List.distinct
-      |> printInline
-      |> List.length  
-    )
-    |> List.fold (+) intersections
-  ) 0
-  // remove dupes
-  // |> fun num -> num / 2
+        // same net
+        | oPort1, oPort2, _, _ when oPort1 = oPort2 -> [None]
+        | _, _, nl1, nl2 -> [None]
+
+    |> List.choose id
+    |> List.distinct
+    |> (@) intersections
+  ) []
+  |> List.distinct
+  |> printInline
+  |> List.length
