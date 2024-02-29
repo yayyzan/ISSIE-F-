@@ -417,6 +417,7 @@ let getVisibleWireLength (model : SheetT.Model) = // T4R
         | [] -> def
         | _ -> List.reduce f lst
 
+    // Get the length of each wire net
     let getWireNetLength (wireNet : Wire list) : float =
         wireNet
         |> List.collect getNonZeroAbsSegments
@@ -436,12 +437,14 @@ let getVisibleWireLength (model : SheetT.Model) = // T4R
 /// <param name="model"> The BusWire model of the Sheet </param>
 /// <returns> The count over the whole sheet </returns>
 let countRightAngles (model: SheetT.Model) = // T5R
+    // Count the number of right angles in a list of segments, By checking the number of times the orientation changes
     let countRightAngles (count: int) (segments: ASegment list) : int =
         segments
         |> List.pairwise
         |> List.filter (fun (currSeg, nextSeg) -> currSeg.Orientation <> nextSeg.Orientation)
         |> (fun lst -> lst.Length + count)
 
+    // get the NonZeroAbsSegments of each wire, and then get the visible segments
     model
     |> Optic.get SheetT.wires_
     |> mapValuesToList
@@ -473,6 +476,8 @@ let makeWindows (wire: Wire) (visSegments: ASegment list list) : Window list =
 /// <param name="sheet"> The Sheet model of the Sheet </param>
 /// <returns> The count of retracing segments, A list of all retracing segments, All retracing segments that intersect symbols </returns>
 let getRetracingSegments (sheet: SheetT.Model) =
+
+    // Given a portId and a list of retracing segments, check if the segments intersect the symbol of that port
     let segmentsIntersectsSymbol (segments: ASegment list) (portId: string)  : ASegment list =
         let sym =
             sheet
@@ -501,11 +506,13 @@ let getRetracingSegments (sheet: SheetT.Model) =
         |> Optic.get SheetT.wires_
         |> mapValuesToList
 
+    // checks if the window has retracing segments
     let isSegmentsRetrace (window: Window) =
         match window.Segments with
         | a::b::c::_ -> b.IsZero && (sign a.Segment.Length <> sign c.Segment.Length)
         | _ -> false
 
+    // determines the retracing segments of a wire, returning a list of retracing segments and a list of retracing segments that intersect symbols
     let getRetracingSegments' (wire: Wire) =
         let retracingSegmentsFold (foundSegments: ASegment list * ASegment list) (window: Window) =
             let allRetracingSegments, intersectingRetracingSegments = foundSegments
@@ -527,7 +534,7 @@ let getRetracingSegments (sheet: SheetT.Model) =
         )
         ||> (fun retraceSeg intersectingRetraces -> retraceSeg, intersectingRetraces)
 
-
+    // Get the retracing segments of all wires and their count
     wires
     |> List.map getRetracingSegments'
     |> List.unzip
