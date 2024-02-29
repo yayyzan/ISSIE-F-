@@ -179,7 +179,7 @@ let calculateBoundingBox (symbol: SymbolT.Symbol) : BoundingBox =
     let topleft = symbol.Pos
     { TopLeft = topleft; W = width; H = height }
 
-// B7R - B7W
+
 let sTransformRotation_ =
     Lens.create (fun (symbol: SymbolT.Symbol) -> symbol.STransform.Rotation) (fun newRotation sTransform ->
         { sTransform with
