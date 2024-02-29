@@ -6,7 +6,6 @@ open CommonTypes
 open Optics
 open Operators
 
-
 //-----------------Module for beautify Helper functions--------------------------//
 // Typical candidates: all individual code library functions.
 // Other helpers identified by Team
@@ -57,6 +56,8 @@ let makeMyPrism_ (lens: Lens<SymbolT.Symbol, 'a>) (id: ComponentId): Prism<Sheet
 let printInline print = printf $"{print}"; print
 let printListInline print = List.map (fun elem -> printf $"{elem}") print |> ignore; print
 
+let printAndPass print pass = printf $"{print}"; pass
+
 let B1: Lens<SymbolT.Symbol, float * float> = 
   let dims_ = {| h = SymbolT.component_ >-> h_; w = SymbolT.component_ >-> w_ |}
 
@@ -100,20 +101,15 @@ let B3 edge: Lens<SymbolT.Symbol, string list> =
 /// Alternative to read SymbolInfo and get order there. I had initially done this before realising this was wrong
 /// I had fun with prisms so decided to leave this here
 let B3' edge: Lens<SymbolT.Symbol, string list> =
+  let symbolInfo_ = Prism.create (fun c -> c.SymbolInfo) (fun i c -> {c with SymbolInfo = Some i})
+  let symbolToInfo_ = SymbolT.component_ >-> symbolInfo_ >?> portOrder_
   let B3R' (symbol: SymbolT.Symbol) =
-    let symbolInfo_ = Prism.create (fun c -> c.SymbolInfo) (fun i c -> {c with SymbolInfo = Some i})
-
-    let symbolToInfo_ = SymbolT.component_ >-> symbolInfo_ >?> portOrder_
-
-    Optic.get symbolToInfo_ symbol
+     Optic.get symbolToInfo_ symbol
     |> Option.map (Map.tryFind edge)
     |> Option.defaultValue None
     |> Option.defaultValue []
     
   let B3W' (order: string list) (symbol: SymbolT.Symbol) =
-    let symbolInfo_ = Prism.create (fun c -> c.SymbolInfo) (fun i c -> {c with SymbolInfo = Some i})
-    let symbolToInfo_ = SymbolT.component_ >-> symbolInfo_ >?> portOrder_
-
     Optic.get symbolToInfo_ symbol
     |> Option.map (Map.add edge order)
     |> Option.map (fun map -> Optic.set symbolToInfo_ map symbol)
@@ -304,7 +300,7 @@ let T3R (sheet: SheetT.Model): int =
         else None
         
       | _ -> None
-      |> fun opt -> match opt with | Some _ -> printf ">> int"; opt | _ -> opt
+      // |> fun opt -> match opt with | Some _ -> printf ">> int"; opt | _ -> opt
 
   let wires = 
     sheet.Wire.Wires
@@ -325,21 +321,23 @@ let T3R (sheet: SheetT.Model): int =
     with
     // Case where both wires do not belong to nets
     | None, None, aS1, aS2 ->
-      printf $">> 0nl"; (aS1, aS2)
+      (aS1, aS2)
+      |> printAndPass $">> 0nl"
       ||> List.allPairs
       |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
     // | Some nl1, None, _, aSeg | None, Some nl1, aSeg, _ ->
     | Some nl1, None, _, aSeg ->
-      snd nl1 |> (printf $">> 1nl"; List.map snd)
-      // snd nl1 |> (printf $">> 1nl {snd nl1 |> List.map snd} {aSeg}"; List.map snd)
+      snd nl1
+      |> printAndPass $">> 1nl"
+      |> List.map snd
       |> List.map BlockHelpers.getNonZeroAbsSegments
       |> List.concat
-      |> List.distinctBy (fun seg -> seg.Start, seg.End) // remove duped segments
-      |> fun netSegs -> (netSegs, aSeg)
-      ||> List.allPairs
+      // |> List.distinctBy (fun seg -> seg.Start, seg.End) // remove duped segments
+      |> fun netSegs -> List.allPairs netSegs aSeg @ List.allPairs aSeg netSegs
       |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
-    | None, Some _, _, _ -> [None] // already counted (twice)
+    | None, Some _, _, _ -> [None] // already counted
     | Some nl1, Some nl2, aS1, aS2 ->
+        printf $">> 2nl"
         match
           fst nl1,
           fst nl2,
@@ -355,7 +353,7 @@ let T3R (sheet: SheetT.Model): int =
     |> (@) intersections
   ) []
   |> List.distinct
-  |> printInline
+  // |> printInline
   |> List.length
 
 let T4R (sheet: SheetT.Model) =
@@ -433,13 +431,10 @@ let T5R (sheet: SheetT.Model) =
           visibleSegments wire.WId sheet
           |> List.scan (+) wire.StartPos
           |> List.tail // remove startpos
-          // |> printListInline
         )
         |> List.concat 
         |> List.distinct
-        // |> printListInline
         |> List.length
         |> fun len -> len - lst.Length
-        // |> printInline
   ) 
   |> List.fold (+) 0

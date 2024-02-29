@@ -192,7 +192,7 @@ let update (msg : Msg) (issieModel : ModelType.Model): ModelType.Model*Cmd<Model
             //printfn "running sheet.update"
             mDragUpdate model mMsg
         | Up -> 
-            printf $">> {(T5R model)}"
+            printf $">> {(T3R model)}"
             mUpUpdate model mMsg
         | Move -> mMoveUpdate model mMsg
 
