@@ -50,6 +50,9 @@ let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
     |> (fun segVecs ->
             (segVecs,[1..segVecs.Length-2])
             ||> List.fold tryCoalesceAboutIndex)
+    |> (fun segVecs ->
+            (segVecs,[1..segVecs.Length-2])
+            ||> List.fold tryCoalesceAboutIndex)
 
 
 //------------------------------------------------------------------------------------------------//
@@ -154,6 +157,23 @@ let symbolFlipState_ =
 //--------------Some functions I have created to use in required T helper functions---------------//
 //------------------------------------------------------------------------------------------------//
 
+type SegmentDirection =
+    | Up
+    | Down
+    | Left
+    | Right
+
+
+let calculateSegDirection (startPos: XYPos) (endPos: XYPos) =
+    if startPos.X = endPos.X then 
+        if startPos.Y < endPos.Y then Some Up
+        else Some Down 
+    elif startPos.Y = endPos.Y then 
+        if startPos.X < endPos.X then Some Right
+        else Some Left
+    else None // Shouldn't happen with visible segments
+
+
 let getWiresWithVisibleSegmentVectors (model: SheetT.Model) = 
     model.Wire.Wires
     |> Map.toList
@@ -162,7 +182,7 @@ let getWiresWithVisibleSegmentVectors (model: SheetT.Model) =
         |> (fun visSegmentVectors -> (cId, wire, visSegmentVectors)))
 
 
-// return a list with (start pos, end pos) for visible segments of a wire
+// return a list with (start pos, end pos) for visible segments of a wire, taking visible sectors vectors as parameter
 let getAbsVisibleSegments (wire: Wire) (visSegmentVectors: List<XYPos>) = 
     ([(wire.StartPos, wire.StartPos)], visSegmentVectors)
     ||> List.fold (fun posTupleList curVec -> 
@@ -179,9 +199,12 @@ let getWiresWithAbsVisibleSegments (model: SheetT.Model) =
         (cId, wire, getAbsVisibleSegments wire visSegmentVectors))
 
 
-let segmentIntersectsASymbol (model: SheetT.Model) (segStart: XYPos) (segEnd: XYPos) = 
+let segmentIntersectsASymbol (model: SheetT.Model) (wire: Wire) (segStart: XYPos) (segEnd: XYPos) = 
     let boundingBoxes =
-        Helpers.mapValues model.BoundingBoxes
+        model.BoundingBoxes
+        |> Map.remove (getSourceSymbol model.Wire wire).Id
+        |> Map.remove (getTargetSymbol model.Wire wire).Id
+        |> Helpers.mapValues 
         |> Array.toList
         
     boundingBoxes
@@ -190,6 +213,7 @@ let segmentIntersectsASymbol (model: SheetT.Model) (segStart: XYPos) (segEnd: XY
                     |> (function
                             | Some _ -> true
                             | None -> false))
+
 
 //------------------------------------------------------------------------------------------------//
 //--------------------------------------T Helper Functions----------------------------------------//
@@ -212,52 +236,18 @@ let countIntersectingSymbolPairs (model: SheetT.Model) =
 
 
 // The number of distinct wire visible segments that intersect with one or more symbols
+// Get source and target symbol, dont count intersections with these
 // T2R
-// currently counts wire intersection with source and dest
-// If I did this per wire I could check if first or last and then check it has 2 intersections before true
 let countVisibleSegmentSymbolIntersections (model: SheetT.Model) = 
-    let wiresWithVisibleSegmentVectors = getWiresWithVisibleSegmentVectors model
-    
-    let allAbsVisibleSegments = 
-        wiresWithVisibleSegmentVectors
-        |> List.collect (fun (_,wire,visSegmentVectors) ->
-            getAbsVisibleSegments wire visSegmentVectors)
-                                                
-    allAbsVisibleSegments
-    |> List.filter (fun (startPos,endPos) ->
-            segmentIntersectsASymbol model startPos endPos)
-    |> List.length
-
-
-// T4 use duplicate visible segments to determine overlap
-// Sum of (visible) wiring segment length
-// currently counts both if segment contained within another, only removes exact duplicates
-// could check if contained and remove inner
-// T4R
-let totalVisibleWireSegmentLength (model: SheetT.Model) =
-    let allDistinctAbsVisibleSegments = 
-        getWiresWithVisibleSegmentVectors model
-        |> List.collect (fun (_,wire,visSegmentVectors) ->
-            getAbsVisibleSegments wire visSegmentVectors)
-        |> List.distinct
-     
-    allDistinctAbsVisibleSegments
-    |> List.map (fun (startPos, endPos) ->    
-            abs(endPos.X - startPos.X + endPos.Y - startPos.Y))
-    |> List.reduce (+)
-
-
-// T5 just count visible segements - 1 for each wire
-// issues when it comes to same net overlap on horizontal and vertical
-// if same net then check if both destination ports are above or below source port, and if so -1 
-// better to do with vertices
-let countVisibleRightAngles (model: SheetT.Model) =
     getWiresWithAbsVisibleSegments model
-    |> List.map (fun (_,_,absVisSegements) ->
+    |> List.map (fun (_,wire,absVisSegements) ->
         absVisSegements
-        |> List.length
-        |> (+) -1 )
+        |> List.filter (fun (startPos,endPos) ->
+            segmentIntersectsASymbol model wire startPos endPos)
+        |> List.length) // num of segments on wire which overlap a BB
     |> List.reduce(+)
+
+
 
 
 
@@ -273,4 +263,88 @@ let countVisibleRightAngles (model: SheetT.Model) =
 // similarly if two segments lie partly or wholly on top of each other, 
 // and are on same net, it should not be counted as am intersection. 
 // Note that in that case they have the same orientation: whereas for intersections the two segments always have opposite orientations.
+
+
+
+
+
+// T4 use duplicate visible segments to determine overlap
+// Sum of (visible) wiring segment length
+// currently counts both if segment contained within another, only removes exact duplicates
+// could check if contained and remove inner
+// group by net, then group by x, group by y. keep longest from each one
+// or don't group by net, just same x/y
+// List.groupBy
+// T4R
+let totalVisibleWireSegmentLength (model: SheetT.Model) =
+    let allDistinctAbsVisibleSegments = 
+        getWiresWithVisibleSegmentVectors model
+        |> List.collect (fun (_,wire,visSegmentVectors) ->
+            getAbsVisibleSegments wire visSegmentVectors)
+        |> List.distinct
+     
+    allDistinctAbsVisibleSegments
+    |> List.map (fun (startPos, endPos) ->    
+            abs(endPos.X - startPos.X + endPos.Y - startPos.Y))
+    |> List.reduce (+)
+
+
+
+
+
+// T5 just count visible segements - 1 for each wire
+// issues when it comes to same net overlap on horizontal and vertical
+// if same net then check if both destination ports are above or below source port, and if so -1 
+
+// better to do with vertices
+
+// current version counts unique vertices
+let countVisibleRightAngles (model: SheetT.Model) =
+    // getWiresWithVisibleSegmentVectors model
+    // |> List.map (fun (cId, wire, visSegmentVectors) ->
+    //     printf $"visSegVectors = {visSeg}")
+
+
+
+
+    getWiresWithAbsVisibleSegments model
+    |> List.collect (fun (_,_,absVisSegements) ->
+        absVisSegements
+        |> List.tail
+        |> List.map (fun (startPos, endPos) ->
+            (startPos, calculateSegDirection startPos endPos)))
+    |> List.distinct
+    |> List.length
+
+
+
+
+// COUNT VERTICES
+    // getWiresWithAbsVisibleSegments model
+    // |> List.collect (fun (_,_,absVisSegements) ->
+    //     absVisSegements
+    //     |> List.map fst
+    //     |> List.tail)
+    // |> List.distinct
+    // |> List.length
+
+// COUNT DISTINCT SEGMENTS
+    // getWiresWithAbsVisibleSegments model
+    // |> List.map (fun (_,_,absVisSegements) ->
+    //     absVisSegements
+    //     |> List.length
+    //     |> (+) -1 )
+    // |> List.reduce(+)
+
+
+
+
+// T6R 
+// return segs
+
+// for end check abs value greater than other if diff
+
+// no need to check two 0 in a row - not possible
+
+// thinking maybe get location all zeros then check them, not sure
 
