@@ -10,30 +10,9 @@ open Operators
 // Typical candidates: all individual code library functions.
 // Other helpers identified by Team
 
-// let position_ = 
-//   Prism.create
-//     (fun (sheet: SheetT.Model, symbolId: ComponentId) ->
-//       sheet.Wire.Symbol.Symbols
-//       |> Map.tryPick (fun _ symbol ->
-//         match (fst SymbolT.component_ symbol).Id with
-//         | id when ComponentId id = symbolId -> Some symbol.Pos
-//         | _ -> None))
-
-//     (fun (position: XYPos) (sheet: SheetT.Model, symbolId: ComponentId) ->
-//       let symbol = 
-//         sheet.Wire.Symbol.Symbols
-//         |> Map.tryPick (fun _ symbol ->
-//           match (fst SymbolT.component_ symbol).Id with
-//           | id when ComponentId id = symbolId -> Some symbol
-//           | _ -> None) 
-
-//       match symbol with
-//       | Some symbol -> (Optic.set SheetT.symbols_ (Map.add symbolId {symbol with Pos = position} sheet.Wire.Symbol.Symbols) sheet), symbolId
-//       | None -> sheet, symbolId)
-
 /// create prism from Model to any Symbol property, useful in combination with predefined lenses to access components, position and others.
-/// If the property does not exist, the set will return the unchanged sheet (this is a policy decision, this could be changed to cause an exception)
-let makeMyPrism_ (lens: Lens<SymbolT.Symbol, 'a>) (id: ComponentId): Prism<SheetT.Model, 'a> =
+/// If the property does not exist, the setter will return the unchanged sheet (this is a policy decision, this could be changed to cause an exception)
+let createSymbolToSymbolPropertyPrism (lens: Lens<SymbolT.Symbol, 'a>) (id: ComponentId): Prism<SheetT.Model, 'a> =
   let prismGet (lens: Lens<SymbolT.Symbol, 'a>) (id: ComponentId) (sheet: SheetT.Model) = 
     Optic.get SheetT.symbols_ sheet
     |> Map.tryFind id
@@ -53,50 +32,77 @@ let makeMyPrism_ (lens: Lens<SymbolT.Symbol, 'a>) (id: ComponentId): Prism<Sheet
 
   Prism.create (prismGet lens id) (prismSet lens id)
 
+// These three functions make it easier to print without interrupting a pipeline (easy to comment in and out)
+
+/// <summary> Print the argument as "${param}"</summary>
+/// <param name="print">The value to print and pass</param>
+/// <returns>The unchanged argument</returns>
 let printInline print = printf $"{print}"; print
+
+/// <summary> Print each element of the list as "${param}"</summary>
+/// <param name="print">The list of values to print and pass</param>
+/// <returns>The unchanged list</returns>
 let printListInline print = List.map (fun elem -> printf $"{elem}") print |> ignore; print
 
+/// <summary> Print an argument as "${param}"</summary>
+/// <param name="print">The value to print</param>
+/// <param name="pass">The value to return</param>
+/// <returns>The unchanged argument</returns>
 let printAndPass print pass = printf $"{print}"; pass
 
-let B1: Lens<SymbolT.Symbol, float * float> = 
+// B1
+/// <summary>Create a lens between symbol and its dimensions</summary>
+let symbolDimensions_: Lens<SymbolT.Symbol, float * float> = 
   let dims_ = {| h = SymbolT.component_ >-> h_; w = SymbolT.component_ >-> w_ |}
 
-  let B1R (symbol: SymbolT.Symbol) =
+  let getSymbolDimensions (symbol: SymbolT.Symbol) =
     Optic.get dims_.h symbol, Optic.get dims_.w symbol
 
-  let B1W (dims: float * float) (symbol: SymbolT.Symbol) =
+  let setSymbolDimensions (dims: float * float) (symbol: SymbolT.Symbol) =
     Optic.set dims_.h (fst dims) symbol
     |> Optic.set dims_.w (snd dims)
 
-  B1R, B1W
+  getSymbolDimensions, setSymbolDimensions
 
-let B2 =
+// B2W
+// B2W is inside the function so that the principal function can be made to return
+// a lens if so desired. This would be achieved by designing a getter function.
+/// <summary>Set symbol position in sheet</summary>
+/// <param name="sheet">Sheet with corresponding symbol</param>
+/// <param name="id">Component ID of symbol whose position to change</param>
+/// <param name="position">Desired symbol position</param>
+/// <returns>The sheet with the modified symbol</returns>
+let setSybolPosition =
+  /// <summary>Use custom prism to access position property of symbol from sheet</summary>
   let B2W (sheet: SheetT.Model) (id: ComponentId) (position: XYPos) =
-    let sheetPosition_ = makeMyPrism_ SymbolT.posOfSym_ id
+    let sheetPosition_ = createSymbolToSymbolPropertyPrism SymbolT.posOfSym_ id
 
     Optic.set sheetPosition_ position sheet
-    
+
+  /// <summary>Set symbol position directly on symbol</summary>
   let B2W' (symbol: SymbolT.Symbol) (position: XYPos) =
     {symbol with Pos = position}
 
-  (), B2W
+  B2W
 
-let B3 edge: Lens<SymbolT.Symbol, string list> =
-  let B3R (symbol: SymbolT.Symbol) =
+// B3
+/// <summary>Create lens between symbol and the order of ports</summary>
+let symbolPortOrder_ edge: Lens<SymbolT.Symbol, string list> =
+  let getSymbolPortOrder (symbol: SymbolT.Symbol) =
     let symbolInfo_ = SymbolT.portMaps_ >-> SymbolT.order_
     
     Optic.get symbolInfo_ symbol
     |> Map.tryFind edge
     |> Option.defaultValue []
 
-  let B3W (order: string list) (symbol: SymbolT.Symbol) =
+  let setSymbolPortOrder (order: string list) (symbol: SymbolT.Symbol) =
     let symbolInfo_ = SymbolT.portMaps_ >-> SymbolT.order_
 
     Optic.get symbolInfo_ symbol
     |> Map.add edge order
     |> fun map -> Optic.set symbolInfo_ map symbol
 
-  B3R, B3W
+  getSymbolPortOrder, setSymbolPortOrder
 
 /// Alternative to read SymbolInfo and get order there. I had initially done this before realising this was wrong
 /// I had fun with prisms so decided to leave this here
@@ -117,27 +123,33 @@ let B3' edge: Lens<SymbolT.Symbol, string list> =
 
   B3R', B3W'
 
-let B4: Lens<SymbolT.Symbol, bool> =
+// B4
+/// <summary>Create lens between symbol and the state of inputs of a MUX2</summary>
+let symbolInputFlipped: Lens<SymbolT.Symbol, bool> =
   let flippedInput_ = Prism.create (fun (s: SymbolT.Symbol) -> s.ReversedInputPorts) (fun b s -> {s with ReversedInputPorts = Some b})
   
-  let B4R (symbol: SymbolT.Symbol) =
+  let isSymbolInputFlipped (symbol: SymbolT.Symbol) =
     Optic.get flippedInput_ symbol
     |> Option.defaultValue false
 
-  let B4W isFlipped (symbol: SymbolT.Symbol) =
+  let setSymbolInputFlip isFlipped (symbol: SymbolT.Symbol) =
     Optic.set flippedInput_ isFlipped symbol
   
-  B4R, B4W
+  isSymbolInputFlipped, setSymbolInputFlip
 
-let B5 =
+// B5R
+// B5R is inside the function so that the principal function can be made to return
+// a lens if so desired. This would be achieved by designing a getter function.
+/// <summary></summary>
+let getPortSheetPosition =
   let model_ = SheetT.wire_ >-> BusWireT.symbol_
 
   let B5R (sheet: SheetT.Model) (port: Port) =
-    getPortPosModel (Optic.get model_ sheet) port
-    // getPortPosModel sheet.Wire.Symbol port // alternative without lens
+    getPortLocation None (Optic.get model_ sheet) port.Id
+  B5R
 
-  B5R, ()
-
+// B6R
+/// <summary>Create lens from Symbol to rotation state of a symbol</summary>
 let B6 =
   let model_ = SheetT.wire_ >-> BusWireT.symbol_
 
@@ -147,33 +159,43 @@ let B6 =
 
   B6R, ()
 
-let B7: Lens<SymbolT.Symbol, Rotation> =
+// B7
+/// <summary>Create lens from Symbol to rotation state of a symbol</summary>
+let symbolRotateState_: Lens<SymbolT.Symbol, Rotation> =
   let rotation_ = 
     Lens.create (fun (s: SymbolT.Symbol) -> s.STransform) (fun t s -> {s with STransform = t}) 
     >-> Lens.create (fun st -> st.Rotation) (fun r st -> {st with Rotation = r})
 
-  let B7R (symbol: SymbolT.Symbol) =
+  let getSymbolRotateState (symbol: SymbolT.Symbol) =
     Optic.get rotation_ symbol
 
-  let B7W (rotation: Rotation) (symbol: SymbolT.Symbol) =
+  let setSymbolRotateState (rotation: Rotation) (symbol: SymbolT.Symbol) =
     Optic.set rotation_ rotation symbol
 
-  B7R, B7W
+  getSymbolRotateState, setSymbolRotateState
 
-let B8: Lens<SymbolT.Symbol, bool> =
+// B8
+/// <summary>Create lens from Symbol to flip state of a symbol</summary>
+let symbolFlipState_: Lens<SymbolT.Symbol, bool> =
   let flip_ = 
     Lens.create (fun (s: SymbolT.Symbol) -> s.STransform) (fun t s -> {s with STransform = t}) 
     >-> Lens.create (fun st -> st.Flipped) (fun f st -> {st with Flipped = f})
 
-  let B8R (symbol: SymbolT.Symbol) =
+  let getSymbolFlipState (symbol: SymbolT.Symbol) =
     Optic.get flip_ symbol
 
-  let B8W (flip: bool) (symbol: SymbolT.Symbol) =
+  let setSymbolFlipState (flip: bool) (symbol: SymbolT.Symbol) =
     Optic.set flip_ flip symbol
 
-  B8R, B8W
+  getSymbolFlipState, setSymbolFlipState
 
-let T1R (sheet: SheetT.Model) =
+// T1R
+/// <summary>Counts the number of pairs of symbols whose bounding boxes intersect on the sheet.</summary>
+/// <remarks>This function retrieves bounding boxes for symbols on the sheet and checks for intersections between them.
+/// It removes duplicates to count unique pairs of intersecting symbols.</remarks>
+/// <param name="sheet">The sheet with the symbols where intersections will be counted</param>
+/// <returns>An integer representing the number of symbol pairs intersecting on the sheet</returns>
+let numberSymbolPairsIntersecting (sheet: SheetT.Model) =
   let BoundingBoxes = Optic.get SheetT.boundingBoxes_ sheet
   let boxes =
       Helpers.mapValues BoundingBoxes
@@ -226,7 +248,13 @@ let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
               (segVecs,[1..segVecs.Length-2])
               ||> List.fold tryCoalesceAboutIndex)
 
-let T2R (sheet: SheetT.Model) =
+// T2R
+/// <summary>Counts the number of visible wire segments that intersect with one or more symbols on the sheet.</summary>
+/// <remarks>This function calculates intersections between wire segments and bounding boxes of symbols.
+/// It excludes wire segments that touch the bounding boxes of the symbols they connect.</remarks>
+/// <param name="sheet">The sheet with the wires and symbols where intersections will be counted</param>
+/// <returns>An integer representing the number of visible wire intersections in this sheet</returns>
+let countVisibleSegmentsIntersectingSymbols (sheet: SheetT.Model) =
   sheet.Wire.Wires
   |> Helpers.mapValues
   |> Seq.toList
@@ -236,7 +264,7 @@ let T2R (sheet: SheetT.Model) =
     // for each segment, does at least one symbol intersect
     vSeg
     |> List.scan (+) thisWire.StartPos
-    // We need to remove the first and last segments because they touch the bounding boxes of the symbols they connect
+    // We need to remove the first and last segments because they can potentially touch the bounding boxes of the symbols they connect
     |> List.tail
     |> List.rev
     |> List.tail
@@ -288,7 +316,12 @@ let T2R (sheet: SheetT.Model) =
 //   // coalesce over wires
 //   |> List.fold (+) 0
 
-let T3R (sheet: SheetT.Model): int =
+// T3R
+/// <summary>Counts the number of intersections between horizontal and vertical wire segments on the sheet.
+/// Does not double count intersections where multiple overlapping wires in the same net intersect other wires.</summary>
+/// <param name="sheet">The sheet with the wires where intersections will be counted</param>
+/// <returns>An integer representing the number of visible wire intersections in this sheet</returns>
+let visibleWireIntersections (sheet: SheetT.Model): int =
   /// CAUTION: This function only counts intersections when the first segment is horizontal
   /// and the second is vertical. This is to prevent multiple counting of the same intersection
   let absSegmentsIntersect (h: BusWireT.ASegment) (v: BusWireT.ASegment): XYPos option =
@@ -321,7 +354,15 @@ let T3R (sheet: SheetT.Model): int =
   // |> printInline
   |> List.length
 
-let T4R (sheet: SheetT.Model) =
+// T4R
+/// <summary>Measure the total length of wiring visible in sheet.
+/// Computes the total length considering non-overlapping segments and adjusting for overlaps at T junctions.
+/// The result is the cumulative length of wires visible on the sheet.</summary>
+/// <remarks>If two wires in the same net overlap and the overlapping segments do not
+/// share either a start or end point, then the lengths will be double counted.</remarks>
+/// <param name="sheet">The sheet with the wires where right angles will be counted</param>
+/// <returns>An integer representing the number of visible right angles in wiring for this sheet</returns>
+let totalVisibleWireLength (sheet: SheetT.Model) =
   let netlist = 
     sheet.Wire.Wires
     |> Helpers.mapValues
@@ -359,7 +400,13 @@ let T4R (sheet: SheetT.Model) =
   ) 
   |> List.fold (+) 0.0
 
-let T5R (sheet: SheetT.Model) =
+// T5R
+/// <summary>Calculate the number of right angles formed by wires. When wires are 
+/// in a net and overlapping, the turn will not be double counted. Only visible
+/// right angles turns in wiring are counted.</summary>
+/// <param name="sheet">The sheet with the wires where right angles will be counted</param>
+/// <returns>An integer representing the number of visible right angles in wiring for this sheet</returns>
+let visibleWireRightAngles (sheet: SheetT.Model) =
   let netlist = 
     sheet.Wire.Wires
     |> Helpers.mapValues
@@ -403,3 +450,5 @@ let T5R (sheet: SheetT.Model) =
         |> fun len -> len - lst.Length
   ) 
   |> List.fold (+) 0
+
+/// TODO T6
