@@ -1,11 +1,11 @@
 ﻿module SheetBeautifyHelpers
+open System
 open CommonTypes
 open DrawModelType
 open DrawModelType.SheetT
 open DrawModelType.SymbolT
 open DrawModelType.BusWireT
 open Optics
-open Optics.Operators
 open BlockHelpers
 open Symbol
 
@@ -33,26 +33,22 @@ let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
         | IsEven, BusWireT.Vertical | IsOdd, BusWireT.Horizontal -> {X=0.; Y=seg.Length}
         | IsEven, BusWireT.Horizontal | IsOdd, BusWireT.Vertical -> {X=seg.Length; Y=0.}
 
-    /// Return a list of segment vectors with 3 vectors coalesced into one visible equivalent
-    /// if this is possible, otherwise return segVecs unchanged.
-    /// Index must be in range >= 1
-    let tryCoalesceAboutIndex (segVecs: XYPos list) (index: int)  =
-        if index < segVecs.Length - 1 && segVecs[index] =~ XYPos.zero
-        then
+
+    /// Return the list of segment vectors with 3 vectors coalesced into one visible equivalent
+    /// wherever this is possible
+    let rec coalesce (segVecs: XYPos list)  =
+        match List.tryFindIndex (fun segVec -> segVec =~ XYPos.zero) segVecs[1..segVecs.Length-2] with          
+        | Some zeroVecIndex ->
+            let index = zeroVecIndex + 1 // base index onto full segVecs
             segVecs[0..index-2] @
             [segVecs[index-1] + segVecs[index+1]] @
             segVecs[index+2..segVecs.Length - 1]
-        else
-            segVecs
-
+            |> coalesce
+        | None -> segVecs
+    
     wire.Segments
     |> List.mapi getSegmentVector
-    |> (fun segVecs ->
-            (segVecs,[1..segVecs.Length-2])
-            ||> List.fold tryCoalesceAboutIndex)
-    |> (fun segVecs ->
-            (segVecs,[1..segVecs.Length-2])
-            ||> List.fold tryCoalesceAboutIndex)
+    |> coalesce
 
 
 //------------------------------------------------------------------------------------------------//
@@ -157,6 +153,7 @@ let symbolFlipState_ =
 //--------------Some functions I have created to use in required T helper functions---------------//
 //------------------------------------------------------------------------------------------------//
 
+
 type SegmentDirection =
     | Up
     | Down
@@ -219,6 +216,7 @@ let segmentIntersectsASymbol (model: SheetT.Model) (wire: Wire) (segStart: XYPos
 //--------------------------------------T Helper Functions----------------------------------------//
 //------------------------------------------------------------------------------------------------//
 
+
 // The number of pairs of symbols that intersect each other
 // T1R
 let countIntersectingSymbolPairs (model: SheetT.Model) = 
@@ -235,6 +233,7 @@ let countIntersectingSymbolPairs (model: SheetT.Model) =
     |> (fun x -> x / 2) // get pairs
 
 
+
 // The number of distinct wire visible segments that intersect with one or more symbols
 // Get source and target symbol, dont count intersections with these
 // T2R
@@ -246,7 +245,6 @@ let countVisibleSegmentSymbolIntersections (model: SheetT.Model) =
             segmentIntersectsASymbol model wire startPos endPos)
         |> List.length) // num of segments on wire which overlap a BB
     |> List.reduce(+)
-
 
 
 
@@ -291,55 +289,50 @@ let totalVisibleWireSegmentLength (model: SheetT.Model) =
 
 
 
-
-// T5 just count visible segements - 1 for each wire
-// issues when it comes to same net overlap on horizontal and vertical
-// if same net then check if both destination ports are above or below source port, and if so -1 
-
-// better to do with vertices
-
-// current version counts unique vertices
+// Make list of vertices for each wire, and note in which direction the wire is leaving that vertex
+// Then perform List.distinct to get only 1 right angle where multiple same-net wires are leaving the vertex in same direction
+// T5R
 let countVisibleRightAngles (model: SheetT.Model) =
-    // getWiresWithVisibleSegmentVectors model
-    // |> List.map (fun (cId, wire, visSegmentVectors) ->
-    //     printf $"visSegVectors = {visSeg}")
-
-
-
-
     getWiresWithAbsVisibleSegments model
     |> List.collect (fun (_,_,absVisSegements) ->
         absVisSegements
-        |> List.tail
+        |> List.tail // remove first since vertex taken would be on symbol
         |> List.map (fun (startPos, endPos) ->
             (startPos, calculateSegDirection startPos endPos)))
     |> List.distinct
     |> List.length
 
 
-
-
-// COUNT VERTICES
-    // getWiresWithAbsVisibleSegments model
-    // |> List.collect (fun (_,_,absVisSegements) ->
-    //     absVisSegements
-    //     |> List.map fst
-    //     |> List.tail)
-    // |> List.distinct
-    // |> List.length
-
-// COUNT DISTINCT SEGMENTS
-    // getWiresWithAbsVisibleSegments model
-    // |> List.map (fun (_,_,absVisSegements) ->
-    //     absVisSegements
-    //     |> List.length
-    //     |> (+) -1 )
-    // |> List.reduce(+)
-
-
-
-
 // T6R 
+let getRetracedSegments (model: SheetT.Model) =  
+    let wires = Helpers.mapValues model.Wire.Wires
+                |> Array.toList
+
+    // let checkRetrace (seg1: Segment) (seg2: Segment) =
+    //     if Math.Sign(seg1.Length) <> Math.Sign(seg2.Length)
+    //     then
+
+    let getRetraced (wire: Wire) = 
+        let segList = wire.Segments
+        ([], segList)
+        ||> List.fold (fun outputList curSeg -> 
+                let index = curSeg.Index
+                if curSeg.Length = 0
+                then
+                    if Math.Sign(segList[index-1].Length) <> Math.Sign(segList[index+1].Length)
+                    then 
+                        let retracedSegs = (segList[index-1],segList[index],segList[index+1])
+                        retracedSegs :: outputList
+                    else 
+                        outputList
+                else 
+                    outputList ) 
+        |> List.rev // to get in order found
+
+    wires
+    |> List.collect getRetraced
+
+
 // return segs
 
 // for end check abs value greater than other if diff
