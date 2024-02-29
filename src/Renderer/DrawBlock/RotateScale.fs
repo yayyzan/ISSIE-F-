@@ -1,5 +1,22 @@
 ﻿module RotateScale
 
+(*
+
+Ezra (er121) 
+Refactoring Summary of RotateScale Module:
+
+- Improved Function Naming: Adopted more descriptive function names for clarity and ease of understanding.
+- Enhanced Documentation: Added detailed XML documentation to every function, explaining their purpose, parameters, and return values for better maintenance and usage clarity.
+- Simplified Logic: Streamlined calculations for bounding boxes, rotations, and flips, making the logic more straightforward and reducing computational redundancy.
+- Error Handling: Introduced error checking in functions like `getBlock` to handle empty lists gracefully, improving the robustness of the code.
+- Alignment with F# Best Practices: Ensured that the code adheres more closely to F# conventions and functional programming principles, including effective use of pattern matching.
+- Clarified Transformation Effects: Made the effects of transformations on symbols more transparent, aiding in predictability and ease of use.
+- Reduced Syntactic Noise: Eliminated unnecessary verbosity in the code, making it cleaner and more readable.
+
+These changes aim to make the RotateScale module more maintainable, understandable, and efficient, laying a solid foundation for future extensions and improvements.
+
+*)
+
 open CommonTypes
 open DrawModelType
 open DrawModelType.SymbolT
@@ -314,7 +331,7 @@ let rotatePointAboutCentre (point: XYPos) (centre: XYPos) (rotation: Rotation) :
         | Degree90 -> (-deltaY, deltaX)
         | Degree180 -> (-deltaX, -deltaY)
         | Degree270 -> (deltaY, -deltaX)
-    { X = centre.X + newX; Y = centre.Y + newY }
+    { X = centre.X - newX; Y = centre.Y - newY }
 
 /// <summary>
 /// Flips a point about a specified center point either horizontally or vertically.
@@ -403,7 +420,7 @@ let flipSymbolInBlock (flip: FlipType) (blockCentre: XYPos) (sym: Symbol) : Symb
     //Needed as new symbols and their components need their Pos updated (not done in regular flip symbol)
     let newTopLeft =
         flipPointAboutCentre sym.Pos blockCentre flip
-        |> adjustPosForBlockFlip flip h w
+        |> calculateNewTopLeftAfterFlip flip h w
 
     let portOrientation =
         sym.PortMaps.Orientation
