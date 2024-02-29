@@ -55,6 +55,7 @@ let makeMyPrism_ (lens: Lens<SymbolT.Symbol, 'a>) (id: ComponentId): Prism<Sheet
   Prism.create (prismGet lens id) (prismSet lens id)
 
 let printInline print = printf $"{print}"; print
+let printListInline print = List.map (fun elem -> printf $"{elem}") print |> ignore; print
 
 let B1: Lens<SymbolT.Symbol, float * float> = 
   let dims_ = {| h = SymbolT.component_ >-> h_; w = SymbolT.component_ >-> w_ |}
@@ -394,3 +395,38 @@ let T4R (sheet: SheetT.Model) =
         )
   ) 
   |> List.fold (+) 0.0
+
+let T5R (sheet: SheetT.Model) =
+  let netlist = 
+    sheet.Wire.Wires
+    |> Helpers.mapValues
+    |> Seq.toList
+    |> List.groupBy (fun wire -> wire.OutputPort)
+
+  netlist
+  |> List.map (fun net ->
+    snd net
+    |> fun lst -> 
+      if lst.Length = 1
+      then // no overlaps possible
+        lst.Head.WId
+        |> fun wid -> visibleSegments wid sheet
+        |> printListInline
+        |> List.length
+        |> fun len -> len - 1 
+        |> printInline 
+      else
+        lst
+        |> List.map (fun wire ->
+          visibleSegments wire.WId sheet
+          // |> List.map (fun seg -> seg + wire.StartPos)
+          |> List.distinct
+        )
+        |> List.concat 
+        |> printListInline
+        |> List.distinct
+        |> List.length
+        |> fun len -> len - 1
+        |> printInline
+  ) 
+  |> List.fold (+) 0
