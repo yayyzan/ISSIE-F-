@@ -92,11 +92,10 @@ let updateSymbolPosition (newPos: XYPos) (givenSymbol: SymbolT.Symbol) (sheet: S
         { sheet with Wire = updatedWireModel }
     | None -> sheet
 
-
 let portMapsOrder_ =
     Lens.create (fun (symbol: SymbolT.Symbol) -> symbol.PortMaps.Order) (fun newOrder symbol ->
         { symbol with PortMaps = { symbol.PortMaps with Order = newOrder } })
-    
+
 // B3R
 /// <summary>
 /// Retrieves the current order of ports on a specified edge of a symbol.
@@ -111,7 +110,7 @@ let readPortsOrder (edge: Edge) (symbol: SymbolT.Symbol) : string list option =
     let currentOrder = Map.tryFind edge currentOrderMap
     currentOrder
 
-// B3W 
+// B3W
 /// <summary>
 /// Updates the order of ports on a specified edge of a symbol.
 /// </summary>
@@ -139,8 +138,7 @@ let reversedInputPorts_ =
 /// <returns>
 /// A boolean option indicating if the input ports are reversed; None if the symbol does not specify this property.
 /// </returns>
-let readReversedInputPorts (symbol: SymbolT.Symbol) : bool option =
-    Optic.get reversedInputPorts_ symbol
+let readReversedInputPorts (symbol: SymbolT.Symbol) : bool option = Optic.get reversedInputPorts_ symbol
 
 // B4W
 /// <summary>
@@ -153,7 +151,6 @@ let readReversedInputPorts (symbol: SymbolT.Symbol) : bool option =
 /// </returns>
 let writeReversedInputPorts (reversed: bool) (symbol: SymbolT.Symbol) : SymbolT.Symbol =
     Optic.set reversedInputPorts_ (Some reversed) symbol
-
 
 // B5R
 /// <summary>
@@ -178,7 +175,7 @@ let readPortPositionOnSheet (symbol: SymbolT.Symbol) (port: Port) : XYPos =
 /// A BoundingBox record representing the top left corner, width, and height of the symbol.
 /// </returns>
 let calculateBoundingBox (symbol: SymbolT.Symbol) : BoundingBox =
-    let (width, height) = readSymbolDimensions symbol   
+    let (width, height) = readSymbolDimensions symbol
     let topleft = symbol.Pos
     { TopLeft = topleft; W = width; H = height }
 
@@ -196,8 +193,7 @@ let sTransformRotation_ =
 /// <returns>
 /// The Rotation value indicating the symbol's current rotation.
 /// </returns>
-let readRotationState (symbol: SymbolT.Symbol) : Rotation =
-    Optic.get sTransformRotation_ symbol
+let readRotationState (symbol: SymbolT.Symbol) : Rotation = Optic.get sTransformRotation_ symbol
 
 // B7W
 /// <summary>
@@ -211,8 +207,7 @@ let readRotationState (symbol: SymbolT.Symbol) : Rotation =
 let writeRotationState (desiredRotation: Rotation) (symbol: SymbolT.Symbol) : SymbolT.Symbol =
     Optic.set sTransformRotation_ desiredRotation symbol
 
-
-let sTransformFlipped_ = 
+let sTransformFlipped_ =
     Lens.create (fun (symbol: SymbolT.Symbol) -> symbol.STransform.Flipped) (fun newFlipped sTransform ->
         { sTransform with
             STransform = { sTransform.STransform with Flipped = newFlipped } })
@@ -225,8 +220,7 @@ let sTransformFlipped_ =
 /// <returns>
 /// A boolean indicating if the symbol is flipped.
 /// </returns>
-let readFlipState (symbol: Symbol) : bool = 
-    Optic.get sTransformFlipped_ symbol
+let readFlipState (symbol: Symbol) : bool = Optic.get sTransformFlipped_ symbol
 
 // B8W
 /// <summary>
@@ -239,7 +233,6 @@ let readFlipState (symbol: Symbol) : bool =
 /// </returns>
 let writeFlipState (flip: bool) (symbol: SymbolT.Symbol) : SymbolT.Symbol =
     Optic.set sTransformFlipped_ flip symbol
-
 
 /// <summary>
 /// Determines if two bounding boxes intersect.
@@ -407,37 +400,31 @@ let countRightAngleIntersections (sheet: SheetT.Model) : int =
 /// </summary>
 /// <param name="vec">The 2D vector to calculate the length of.</param>
 /// <returns>The length of the vector (float).</returns>
-
 let vectorLength (vec: XYPos) : float = sqrt ((vec.X ** 2.0) + (vec.Y ** 2.0))
 
 // T4R
-// TODO - Check same input port to define same net. 
 /// <summary>
-/// Computes the total length of all unique visible wire segments in the schematic.
+/// Calculates the sum of lengths of unique visible wire segments on the sheet.
+/// Only counts each segment once for segments that overlap and belong to the same net (shared InputPortId).
 /// </summary>
-/// <param name="model">The model of the schematic containing wires and their segments.</param>
-/// <returns>The sum of lengths of all unique visible segments, ensuring overlapping segments are counted once.</returns>
-/// <remarks>
-/// Segments are considered identical if they belong to the same wire and have the same direction and length. This function ensures that each unique segment's length is counted only once, regardless of how many times it occurs.
-/// </remarks>
+/// <param name="model">The model containing all wires and segments.</param>
+/// <returns>The total length of all unique visible segments, accounting for overlaps on the same net.</returns>
 let sumOfUniqueVisibleSegmentLengths (model: SheetT.Model) : float =
-    let allWires = model.Wire.Wires |> Map.toList
-
-    let allVisibleSegments =
-        allWires
-        |> List.collect (fun (wId, _) ->
+    let allVisibleSegmentsWithInputPort =
+        model.Wire.Wires
+        |> Map.toList
+        |> List.collect (fun (wId, wire) ->
             visibleSegments wId model
-            |> List.map (fun vec -> (wId, vec)))
+            |> List.map (fun vec -> wire.InputPort, vec))
 
-    let groupedSegments =
-        allVisibleSegments
-        |> List.groupBy (fun (wId, vec) -> (wId, vec))
+    let groupedSegmentsByNetAndVector =
+        allVisibleSegmentsWithInputPort
+        |> List.groupBy fst // Group by InputPortId
+        |> List.collect (fun (_, segments) -> segments |> List.groupBy snd |> List.map snd)
 
     let uniqueSegmentLengths =
-        groupedSegments
-        |> List.map (fun (_, segments) ->
-            let representativeVector = List.head segments |> snd
-            vectorLength representativeVector)
+        groupedSegmentsByNetAndVector
+        |> List.map (fun segments -> segments |> List.head |> snd |> vectorLength)
 
     uniqueSegmentLengths |> List.sum
 
@@ -474,6 +461,12 @@ let countVisibleRightAngles (model: SheetT.Model) =
         |> fst)
     |> List.sum
 
+/// <summary>
+/// Determines if the start point of a wire segment is located inside any symbol's bounding box.
+/// </summary>
+/// <param name="seg">The wire segment to check.</param>
+/// <param name="symbolsBoundingBoxes">A map of symbol component IDs to their corresponding bounding boxes.</param>
+/// <returns>True if the start point of the segment is inside a symbol's bounding box; otherwise, false.</returns>
 let isSegmentStartInsideSymbol (seg: BusWireT.ASegment) (symbolsBoundingBoxes: Map<ComponentId, BoundingBox>) : bool =
     symbolsBoundingBoxes
     |> Map.exists (fun _ bbox ->
