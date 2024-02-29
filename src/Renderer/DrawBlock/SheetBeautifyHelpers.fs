@@ -409,24 +409,37 @@ let T5R (sheet: SheetT.Model) =
     |> fun lst -> 
       if lst.Length = 1
       then // no overlaps possible
-        lst.Head.WId
-        |> fun wid -> visibleSegments wid sheet
-        |> printListInline
+        let posList = 
+          lst.Head.WId
+          |> fun wid -> visibleSegments wid sheet
+
+        posList
         |> List.length
-        |> fun len -> len - 1 
-        |> printInline 
+        |> (fun len -> 
+          // check for 0 0 segment
+          let zeroes = 
+            posList
+            |> List.tryFind ((=) XYPos.zero) 
+            |> function
+            | Some _ -> 3
+            | _ -> 1
+
+          len - zeroes
+        )
+
       else
         lst
         |> List.map (fun wire ->
           visibleSegments wire.WId sheet
-          // |> List.map (fun seg -> seg + wire.StartPos)
-          |> List.distinct
+          |> List.scan (+) wire.StartPos
+          |> List.tail // remove startpos
+          // |> printListInline
         )
         |> List.concat 
-        |> printListInline
         |> List.distinct
+        // |> printListInline
         |> List.length
-        |> fun len -> len - 1
-        |> printInline
+        |> fun len -> len - lst.Length
+        // |> printInline
   ) 
   |> List.fold (+) 0
