@@ -4,6 +4,7 @@
 // Typical candidates: all individual code library functions.
 // Other helpers identified by Team
 open System
+open System.Runtime.CompilerServices
 open CommonTypes
 open DrawModelType
 open DrawModelType.BusWireT
@@ -330,7 +331,7 @@ let getVisibleSegmentsOfWire (wire: Wire) =
 
 /// <summary> Returns all visible segments in the wire </summary>
 /// <remarks> This function calls getVisible segments twice, once to remove overlaps within the wire (in getVisibleSegmentsOfWire), and another to remove global overlaps </remarks>
-/// <param name="model"> The model to get the segments from </param>
+/// <param name="model"> The Sheet to get the segments from </param>
 /// <returns> All visible segments in the model </returns>
 let getAllVisibleSegments (model: SheetT.Model) =
     model
@@ -368,7 +369,7 @@ let getWireNets (model: BusWireT.Model) : Wire list list =
 
 
 /// <summary>  The number of distinct wire visible segments that intersect with one or more symbols </summary>
-/// <param name="model"> The BusWire model of the Sheet </param>
+/// <param name="model"> The Sheet model of the Sheet </param>
 /// <returns> The count over the whole sheet </returns>
 let countSegmentsIntersectingSymbols (model: SheetT.Model) = // T2R
     model
@@ -434,25 +435,20 @@ let getVisibleWireLength (model : SheetT.Model) = // T4R
 
 /// <summary> Number of visible wire right-angles </summary>
 /// <remarks>The number of distinct pairs of visible segments that cross each other at right angles </remarks>
-/// <param name="model"> The BusWire model of the Sheet </param>
+/// <param name="model"> The Sheet model of the Sheet </param>
 /// <returns> The count over the whole sheet </returns>
 let countRightAngles (model: SheetT.Model) = // T5R
-    // Count the number of right angles in a list of segments, By checking the number of times the orientation changes
-    let countRightAngles (count: int) (segments: ASegment list) : int =
-        segments
-        |> List.pairwise
-        |> List.filter (fun (currSeg, nextSeg) -> currSeg.Orientation <> nextSeg.Orientation)
-        |> (fun lst -> lst.Length + count)
-
-    // get the NonZeroAbsSegments of each wire, and then get the visible segments
+   // get the NonZeroAbsSegments of each wire, and then get the visible segments
     model
     |> Optic.get SheetT.wires_
     |> mapValuesToList
-    |> List.map getNonZeroAbsSegments
-    |> (fun segments ->
-            (0, segments)
-            ||> List.fold countRightAngles
-        )
+    |> List.collect getNonZeroAbsSegments
+    |> List.length
+    |> (fun n ->
+        match n with
+        | IsEven -> n / 2
+        | IsOdd -> (n / 2) - 1
+    )
 
 
 // A sliding window for going through segments. It contains the portId if the window is the first of last window of a wire
