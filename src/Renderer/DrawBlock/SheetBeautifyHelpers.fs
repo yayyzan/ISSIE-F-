@@ -289,6 +289,8 @@ let T2R (sheet: SheetT.Model) =
 //   |> List.fold (+) 0
 
 let T3R (sheet: SheetT.Model): int =
+  /// CAUTION: This function only counts intersections when the first segment is horizontal
+  /// and the second is vertical. This is to prevent multiple counting of the same intersection
   let absSegmentsIntersect (h: BusWireT.ASegment) (v: BusWireT.ASegment): XYPos option =
       match h.Orientation, v.Orientation with
       | BusWireT.Horizontal, BusWireT.Vertical ->
@@ -298,9 +300,7 @@ let T3R (sheet: SheetT.Model): int =
         if (h.Start.Y < ymax && h.Start.Y > ymin) && (v.Start.X < xmax && v.Start.X > xmin)
         then Some {X = v.Start.X; Y = h.Start.Y}
         else None
-        
       | _ -> None
-      // |> fun opt -> match opt with | Some _ -> printf ">> int"; opt | _ -> opt
 
   let wires = 
     sheet.Wire.Wires
@@ -310,44 +310,9 @@ let T3R (sheet: SheetT.Model): int =
   (wires, wires)
   ||> List.allPairs
   |> List.fold (fun intersections (firstWire, secondWire) ->
-    // remove self intersection
-    if firstWire.WId = secondWire.WId then intersections else
-  
-    match 
-      BlockHelpers.isWireInNet sheet.Wire firstWire,
-      BlockHelpers.isWireInNet sheet.Wire secondWire,
-      BlockHelpers.getNonZeroAbsSegments firstWire,
-      BlockHelpers.getNonZeroAbsSegments secondWire
-    with
-    // Case where both wires do not belong to nets
-    | None, None, aS1, aS2 ->
-      (aS1, aS2)
-      |> printAndPass $">> 0nl"
-      ||> List.allPairs
-      |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
-    // | Some nl1, None, _, aSeg | None, Some nl1, aSeg, _ ->
-    | Some nl1, None, _, aSeg ->
-      snd nl1
-      |> printAndPass $">> 1nl"
-      |> List.map snd
-      |> List.map BlockHelpers.getNonZeroAbsSegments
-      |> List.concat
-      // |> List.distinctBy (fun seg -> seg.Start, seg.End) // remove duped segments
-      |> fun netSegs -> List.allPairs netSegs aSeg @ List.allPairs aSeg netSegs
-      |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
-    | None, Some _, _, _ -> [None] // already counted
-    | Some nl1, Some nl2, aS1, aS2 ->
-        printf $">> 2nl"
-        match
-          fst nl1,
-          fst nl2,
-          snd nl1,
-          snd nl2
-        with
-        // same net
-        | oPort1, oPort2, _, _ when oPort1 = oPort2 -> [None]
-        | _, _, nl1, nl2 -> [None]
-
+    (BlockHelpers.getNonZeroAbsSegments firstWire, BlockHelpers.getNonZeroAbsSegments secondWire)
+    ||> List.allPairs
+    |> List.map (fun (seg1, seg2) -> absSegmentsIntersect seg1 seg2)
     |> List.choose id
     |> List.distinct
     |> (@) intersections
