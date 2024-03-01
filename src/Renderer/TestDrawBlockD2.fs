@@ -233,7 +233,7 @@ module D2T =
     /// Randomly selects a flip type for a symbol.
     /// </summary>
     let randomFlipType () =
-        let flips = [| SymbolT.FlipType.FlipHorizontal; SymbolT.FlipType.FlipVertical |]
+        let flips = [| FlipHorizontal; FlipVertical |]
         flips.[random.Next(flips.Length)]
 
     /// <summary>
