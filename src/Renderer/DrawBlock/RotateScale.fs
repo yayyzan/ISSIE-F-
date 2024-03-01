@@ -5,30 +5,32 @@
 //                  Refactoring Summary of RotateScale Module (line 279 to 377):
 // ############################################################################################################
 //
-// - Simplified bounding box calculation: Replaced manual iteration with `List.maxBy` and `List.minBy` for 
-//   finding extreme symbol positions, reducing code complexity and improving readability.
+// - Enhanced Documentation: Added detailed comments for `getBlock`, `rotatePointAboutCentre`, and 
+//   `flipPointAboutCentre` functions, explaining their purpose, inputs, outputs, and handling edge cases.
 //
-// - Simplified mathematical operations: Made computations for bounding box dimensions easier by directly 
-//   applying functional list operations, making the logic more declarative.
+// - Exception Handling: In `getBlock`, introduced a check for empty symbol lists with `failwith` to throw an 
+//   informative exception, enhancing error messaging and code robustness.
 //
-// - Abstracted common functionalities: Centralised repeated logic (e.g., rotated height and width calculation)
-//   into reusable functions, adhering to the DRY (Don't Repeat Yourself) principle for better maintainability.
+// - Functional Programming Constructs: Employed `List.fold` in `getBlock` for aggregating extreme symbol positions, 
+//   and used pattern matching in `rotatePointAboutCentre` for concise and readable geometric transformations.
 //
-// - Improved function signatures and naming: Adopted more descriptive function names for clarity and ease of understanding.
+// - Abstraction and Modularity: Extracted common logic into `getRotatedHAndW` function, used by multiple other 
+//   functions to calculate rotated dimensions, reducing duplication (DRY) and improving maintainability.
 //
-// - Error Handling: Introduced error checking in functions like `getBlock` to handle empty lists gracefully, improving the robustness of the code.
+// - Improved Code Structure: Utilized functional chaining and pipelining in `getBlock`, streamlining data 
+//   transformations for clearer logic flow.
 //
-// - Optimised geometric transformations: Condensed code for rotating and flipping points, making geometric 
-//   operations more succinct.
+// - Mathematical Accuracy: Applied direct mathematical formulas for point rotation and flipping in 
+//   `rotatePointAboutCentre` and `flipPointAboutCentre`, ensuring precise geometric transformations.
 //
-// - Reduced Syntactic Noise: Eliminated unnecessary verbosity in the code, making it cleaner and more readable. See rotatePointAboutCentre where the transformation of the point is done in a single line.
+// - Input and Data Handling Enhancements: Used local `let` bindings in `calculateNewTopLeftAfterRotation` to 
+//   simplify complex expressions, improving code readability and reducing duplication.
 //
-// - Focused on readability and efficiency: By refactoring, aimed to make the code more accessible, easier to 
-//   maintain, and efficient, without altering the underlying logic or purpose of the functions.
+// - Record Utilization: Introduced `XYPos` and `BoundingBox` records to group related data, enhancing clarity and 
+//   type safety in geometric calculations.
 //
 // Note: For detailed explanations and specifics of each improvement, refer to the accompanying function comments.
 // ############################################################################################################
-
 
 open CommonTypes
 open DrawModelType
@@ -305,8 +307,7 @@ let optimiseSymbol
 /// </remarks>
 
 let getBlock (symbols: Symbol list) : BoundingBox =
-    // Simplified bounding box calculation using List.maxBy and List.minBy.
-    // Reduced complexity and improved readability by abstracting iteration logic.
+    // Added exception handling to ensure the symbol list is not empty.
     if List.isEmpty symbols then
         failwith "[ROTATESCALE - getBlock] : Symbol list is empty."
     else
