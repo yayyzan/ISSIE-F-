@@ -3,15 +3,14 @@
 (*
 
 Ezra (er121) 
-Refactoring Summary of RotateScale Module:
+Refactoring Summary of RotateScale Module (line 279 to 377):
 
 - Improved Function Naming: Adopted more descriptive function names for clarity and ease of understanding.
 - Enhanced Documentation: Added detailed XML documentation to every function, explaining their purpose, parameters, and return values for better maintenance and usage clarity.
-- Simplified Logic: Streamlined calculations for bounding boxes, rotations, and flips, making the logic more straightforward and reducing computational redundancy.
+- Simplified Logic: Streamlined calculations for bounding boxes, rotations, and flips, making the logic more straightforward and reducing computational redundancy. See calculateNewTopLeftAfterRotation where position transformation is done inside the pattern matching .
 - Error Handling: Introduced error checking in functions like `getBlock` to handle empty lists gracefully, improving the robustness of the code.
 - Alignment with F# Best Practices: Ensured that the code adheres more closely to F# conventions and functional programming principles, including effective use of pattern matching.
-- Clarified Transformation Effects: Made the effects of transformations on symbols more transparent, aiding in predictability and ease of use.
-- Reduced Syntactic Noise: Eliminated unnecessary verbosity in the code, making it cleaner and more readable.
+- Reduced Syntactic Noise: Eliminated unnecessary verbosity in the code, making it cleaner and more readable. See rotatePointAboutCentre where the transformation of the point is done in a single line.
 
 These changes aim to make the RotateScale module more maintainable, understandable, and efficient, laying a solid foundation for future extensions and improvements.
 
@@ -278,7 +277,7 @@ let optimiseSymbol
     BusWireSeparate.routeAndSeparateSymbolWires model' symbol.Id
 
 // ############################################################################################################
-//                                      ----- Ezra's refactoring below -----
+//                                      ----- Ezra Reich -- er121 -----
 // ############################################################################################################
 
 /// <summary>
@@ -348,7 +347,7 @@ let flipPointAboutCentre (point: XYPos) (centre: XYPos) (flipType: FlipType) =
 /// <summary>
 /// Calculates the new top-left position of a symbol after rotation.
 /// </summary>
-/// <param name="rotation">The rotation applied to the symbol (CW or CCW).</param>
+/// <param name="rotation">The rotation applied to the symbol.</param>
 /// <param name="height">The original height of the symbol before rotation.</param>
 /// <param name="width">The original width of the symbol before rotation.</param>
 /// <param name="position">The original top-left position of the symbol.</param>
@@ -374,7 +373,7 @@ let calculateNewTopLeftAfterFlip (flipType: FlipType) (height: float) (width: fl
     | FlipVertical -> { X = pos.X; Y = pos.Y - height }
 
 // ############################################################################################################
-//                                      ----- Ezra's refactoring above -----
+//                                      ----- Ezra Reich -- er121 -----
 // ############################################################################################################
 
 /// <summary>HLP 23: AUTHOR Ismagilov - Rotate a symbol in its block.</summary>

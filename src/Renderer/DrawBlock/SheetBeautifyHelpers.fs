@@ -179,7 +179,6 @@ let calculateBoundingBox (symbol: SymbolT.Symbol) : BoundingBox =
     let topleft = symbol.Pos
     { TopLeft = topleft; W = width; H = height }
 
-
 let sTransformRotation_ =
     Lens.create (fun (symbol: SymbolT.Symbol) -> symbol.STransform.Rotation) (fun newRotation sTransform ->
         { sTransform with
@@ -261,6 +260,8 @@ let doBoundingBoxesIntersect (box1: BoundingBox) (box2: BoundingBox) : bool =
 /// </summary>
 /// <param name="sheet">The sheet model containing the symbols.</param>
 /// <returns>The number of intersecting symbol pairs.</returns>
+/// <remarks> An intersection is considered if the bounding boxes of two symbols overlap.</remarks>
+/// <remarks> See implementation for comments on corner cases.</remarks>
 let countIntersectingSymbolPairs (sheet: SheetT.Model) =
     let symbols =
         sheet.Wire.Symbol.Symbols
@@ -271,6 +272,7 @@ let countIntersectingSymbolPairs (sheet: SheetT.Model) =
         symbols
         |> List.mapi (fun i sym1 ->
             symbols
+            // Skip the first i symbols to avoid counting pairs twice
             |> List.skip (i + 1)
             |> List.map (fun sym2 -> (sym1, sym2)))
         |> List.concat
@@ -281,6 +283,18 @@ let countIntersectingSymbolPairs (sheet: SheetT.Model) =
 
     intersectingPairs |> List.length
 
+/// <summary>
+/// Calculates the visible segments of a wire identified by its ConnectionId within a given SheetT.Model.
+/// </summary>
+/// <param name="wId">The ConnectionId of the wire to process.</param>
+/// <param name="model">The SheetT.Model containing the wire and its segments.</param>
+/// <returns>A list of XYPos representing the vectors of visible segments from the source end to the target end of the wire.</returns>
+/// <remarks>
+/// This function processes each segment of the wire based on its index and initial orientation to determine its direction (horizontal or vertical). 
+/// It then checks for zero-length segments that can coalesce adjacent segments into a single visible segment, effectively simplifying the wire's path by removing redundant turns. 
+/// The index range for coalescing is from the second to the second-last segment of the wire, ensuring the wire's endpoints remain unchanged. 
+/// The result is a streamlined representation of the wire's path, focusing on the segments visible in the schematic layout.
+/// </remarks>
 let visibleSegments (wId: ConnectionId) (model: SheetT.Model) : XYPos list =
     let wire = model.Wire.Wires[wId] // get wire from model
     /// helper to match even and off integers in patterns (active pattern)
@@ -320,6 +334,8 @@ let visibleSegments (wId: ConnectionId) (model: SheetT.Model) : XYPos list =
 /// </summary>
 /// <param name="model">The model of the sheet containing wires and symbols.</param>
 /// <returns>The count of distinct wire segments intersecting any symbol.</returns>
+/// <remarks>  An intersection is considered if the segment overlaps with the bounding box of a symbol. </remarks>
+/// <remarks>  See implementation for comments on corner cases. </remarks>
 let countDistinctWireSegmentsIntersectingSymbols (model: SheetT.Model) : int =
     let symbols =
         Map.toList model.Wire.Symbol.Symbols
@@ -335,6 +351,7 @@ let countDistinctWireSegmentsIntersectingSymbols (model: SheetT.Model) : int =
               (fun ((lastPos: XYPos), acc) vec ->
                   let newPos = { X = lastPos.X + vec.X; Y = lastPos.Y + vec.Y }
                   let segBox = { TopLeft = lastPos; W = abs vec.X; H = abs vec.Y }
+                  // This approach considers wire segments intersecting if they start or end inside a symbol's bounding box, even if they extend outside.
                   let intersects = symbolBoxes |> List.exists (overlap2DBox segBox)
                   if intersects then
                       (newPos, acc + 1)
@@ -369,6 +386,16 @@ let doIntersectAtRightAngle (seg1: BusWireT.ASegment) (seg2: BusWireT.ASegment) 
             rectIntersect seg2 seg1
     | _ -> false
 
+/// <summary>
+/// Generates all distinct pairs from a list where each pair consists of an element and another distinct element from the list.
+/// </summary>
+/// <param name="lst">The list from which to generate pairs.</param>
+/// <returns>A list of distinct pairs where each pair is a tuple consisting of an element from the list and another distinct element from the list.</returns>
+let rec distinctPairs lst =
+    match lst with
+    | [] -> []
+    | h::t -> List.map (fun elem -> (h, elem)) t @ distinctPairs t
+
 // T3R
 /// <summary>
 /// Calculates the total number of unique right angle intersections between wire segments in the schematic.
@@ -384,7 +411,7 @@ let countRightAngleIntersections (sheet: SheetT.Model) : int =
         wires
         |> List.collect (snd >> getNonZeroAbsSegments)
 
-    let segmentPairs = List.allPairs allSegments allSegments
+    let segmentPairs = distinctPairs allSegments 
 
     let rightAngleIntersections =
         segmentPairs
@@ -393,7 +420,7 @@ let countRightAngleIntersections (sheet: SheetT.Model) : int =
             || seg1.Segment.Index <> seg2.Segment.Index)
         |> List.filter (fun (seg1, seg2) -> doIntersectAtRightAngle seg1 seg2)
 
-    rightAngleIntersections.Length / 2
+    rightAngleIntersections.Length 
 
 /// <summary>
 /// Calculates the length of a 2D vector.
@@ -405,25 +432,28 @@ let vectorLength (vec: XYPos) : float = sqrt ((vec.X ** 2.0) + (vec.Y ** 2.0))
 // T4R
 /// <summary>
 /// Calculates the sum of lengths of unique visible wire segments on the sheet.
-/// Only counts each segment once for segments that overlap and belong to the same net (shared InputPortId).
+/// Only counts each segment once for segments that overlap and belong to the same net (shared OutputPortId).
 /// </summary>
 /// <param name="model">The model containing all wires and segments.</param>
 /// <returns>The total length of all unique visible segments, accounting for overlaps on the same net.</returns>
+/// <remarks> See implementation for comments on corner cases. </remarks>
 let sumOfUniqueVisibleSegmentLengths (model: SheetT.Model) : float =
-    let allVisibleSegmentsWithInputPort =
+    let allVisibleSegmentsWithOutputPort =
         model.Wire.Wires
         |> Map.toList
         |> List.collect (fun (wId, wire) ->
             visibleSegments wId model
-            |> List.map (fun vec -> wire.InputPort, vec))
+            |> List.map (fun vec -> wire.OutputPort, vec))
 
     let groupedSegmentsByNetAndVector =
-        allVisibleSegmentsWithInputPort
-        // Group by InputPortId
-        |> List.groupBy fst 
+        allVisibleSegmentsWithOutputPort
+        // Group by OutputPortId 
+        |> List.groupBy fst
         |> List.collect (fun (_, segments) -> segments |> List.groupBy snd |> List.map snd)
 
     let uniqueSegmentLengths =
+        // This function aggregates the lengths of visible wire segments within each net, ensuring uniqueness within the same net. 
+        // If two segments from different nets overlap, they are evaluated independently because they belong to different nets and are processed separately.
         groupedSegmentsByNetAndVector
         |> List.map (fun segments -> segments |> List.head |> snd |> vectorLength)
 
@@ -496,15 +526,14 @@ let identifyRetracingSegmentsAndEnds (sheet: SheetT.Model) : BusWireT.ASegment l
         (fun acc _ wire ->
             let absSegments = getAbsSegments wire
             let processSegment i (seg: BusWireT.ASegment) =
-                let isHorizontal (seg: BusWireT.ASegment) = seg.Orientation = BusWireT.Orientation.Horizontal
-                let isVertical (seg: BusWireT.ASegment) = seg.Orientation = BusWireT.Orientation.Vertical
                 let isRetracing =
-                    if i > i && i < List.length absSegments - 1 && seg.Segment.Length = 0.0 then
-                       let prevSeg = absSegments.[i - 1]
-                       let nextSeg = absSegments.[i + 1]
-                       // Check if the direction changes from horizontal to vertical or vice versa
-                       (isHorizontal prevSeg && isVertical nextSeg) || (isVertical prevSeg && isHorizontal nextSeg)
-                    else false
+                    i > 0
+                    && i < List.length absSegments - 1
+                    && let prevSeg = absSegments.[i - 1] in
+                        let nextSeg = absSegments.[i + 1] in
+                        // Check if segment flanked by two segments of opposite directions
+                        prevSeg.Segment.Length * nextSeg.Segment.Length < 0.0
+                        && seg.Segment.Length = 0.0
 
                 let isEndRetracing =
                     (i = 0 || i = List.length absSegments - 1)
