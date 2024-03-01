@@ -9,11 +9,32 @@ open Optics
 open Operators
 open BlockHelpers
 open SymbolResizeHelpers
+open Helpers
 
 (* 
     This module contains the code that rotates and scales blocks of components.
     It was collected from HLP work in 2023 and has some technical debt and also unused functions.
     It requires better documentation of teh pasrts now used.
+*)
+
+(*
+RotateScale.fs Contributor: Yazan Ayyoub (ya921)
+The following outlines the modifications made to the codebase for the purpose of enhancing readability, removing redundancy, 
+and improving functional abstraction. The changes were made with a focus on ensuring the code is understandable for new contributors.
+I worked on the following functions: rotateSymbolByDegree, rotateBlock, oneCompBoundsBothEdges, findSelectedSymbols, getScalingFactorAndOffsetCentre, getScalingFactorAndOffsetCenterGroup
+--- getScalingFactorAndOffsetCenterGroup: Functional abstraction was improved and redundant code was removed by utilizing the getMinMaxSymbol and calculateNewOldMinMax functions.
+--- getScalingFactorAndOffsetCentre: Replaced if-else statements with a match and when expression for better readability. 
+Simplified further using a match expression.
+--- oneCompBoundsBothEdges: Repeated code was removed and replaced with the getSymbolCentreBy function for cleaner code.
+--- rotateBlock: The getBlock function was utilized to remove redundant code. The partitioning of used/unused symbols was improved by using the Map.partition function with a single let definition. 
+Reduced complexity by removing the Map.ofList function by changing the Map.fold function to a List.fold function, folding the list of newSymbols into a map containing the unselectedSymbols. 
+Unnecessary print statements were removed. The .CenterPos field of the Symbol type was used to eliminate the block let definition.
+--- rotateSymbolByDegree: Redundant code was removed, and the .CenterPos field of the Symbol type was used to obtain the center position, 
+eliminating the need for the pos let definition.
+--- findSelectedSymbols: The code was refactored to use a pipeline to pipe compList into the List.map function.
+In all functions, commented out arguments and code were removed as they were deemed unnecessary. XML comments were added to each function to provide a summary, 
+list of arguments, and return values. Function naming was also revised to adhere to camelCase naming conventions.
+Finally I enfored function types by setting the return type of each function.
 *)
 
 /// Record containing all the information required to calculate the position of a port on the sheet.
@@ -402,7 +423,6 @@ let flipSymbolInBlock
     (sym: Symbol) : Symbol =
 
     let h,w = getRotatedHAndW sym
-    //Needed as new symbols and their components need their Pos updated (not done in regular flip symbol)
     let newTopLeft = 
         flipPointAboutBlockCentre sym.Pos blockCentre flip
         |> adjustPosForBlockFlip flip h w
@@ -447,7 +467,6 @@ let flipSymbolInBlock
 /// <param name="sym"> Symbol to be rotated</param>
 /// <returns>New symbol after scaled about block centre.</returns>
 let scaleSymbolInBlock
-    //(Mag: float)
     (scaleType: ScaleType)
     (block: BoundingBox)
     (sym: Symbol) : Symbol =
@@ -470,110 +489,100 @@ let scaleSymbolInBlock
 
     {sym with Pos = newPos; Component=newComponent; LabelHasDefaultPos=true}
 
-
-/// HLP 23: AUTHOR Klapper - Rotates a symbol based on a degree, including: ports and component parameters.
-
-let rotateSymbolByDegree (degree: Rotation) (sym:Symbol)  =
-    let pos = {X = sym.Component.X + sym.Component.W / 2.0 ; Y = sym.Component.Y + sym.Component.H / 2.0 }
+/// <summary>HLP 23: AUTHOR Klapper - Rotates a symbol based on a degree, including: ports and component parameters.</summary>
+/// <param name="degree"> Degree of rotation.</param>
+/// <param name="sym"> Symbol to be rotated.</param>
+/// <returns>New rotated symbol.</returns>
+let rotateSymbolByDegree (degree: Rotation) (sym:Symbol) : Symbol =
     match degree with
     | Degree0 -> sym
-    | _ ->  rotateSymbolInBlock degree pos sym
-    
+    | _ ->  rotateSymbolInBlock degree sym.CentrePos sym
 
-/// <summary>HLP 23: AUTHOR Ismagilov - Rotates a block of symbols, returning the new symbol model</summary>
-/// <param name="compList"> List of ComponentId's of selected components</param>
-/// <param name="model"> Current symbol model</param>
-/// <param name="rotation"> Type of rotation to do</param>
-/// <returns>New rotated symbol model</returns>
-let rotateBlock (compList:ComponentId list) (model:SymbolT.Model) (rotation:Rotation) = 
+/// <summary>HLP 23: AUTHOR Ismagilov - Rotates a block of symbols, returning the new symbol model.</summary>
+/// <param name="compList"> List of ComponentId's of selected components.</param>
+/// <param name="model"> Current symbol model.</param>
+/// <param name="rotation"> Type of rotation to do.</param>
+/// <returns>New rotated symbol model.</returns>
+let rotateBlock (compList:ComponentId list) (model:SymbolT.Model) (rotation:Rotation) : SymbolT.Model = 
+    let selectedSymbols, unselectedSymbols = 
+        model.Symbols 
+        |> Map.partition (fun x _ -> List.contains x compList)
+        ||> (fun x y -> (mapValues x |> Array.toList, y))
 
-    printfn "running rotateBlock"
-    let SelectedSymbols = List.map (fun x -> model.Symbols |> Map.find x) compList
-    let UnselectedSymbols = model.Symbols |> Map.filter (fun x _ -> not (List.contains x compList))
-
-    //Get block properties of selected symbols
-    let block = getBlock SelectedSymbols
-
-    //Rotated symbols about the center
     let newSymbols = 
-        List.map (fun x -> rotateSymbolInBlock (invertRotation rotation) (block.Centre()) x) SelectedSymbols 
+        List.map (fun x -> rotateSymbolInBlock (invertRotation rotation) x.CentrePos x) selectedSymbols
 
-    //return model with block of rotated selected symbols, and unselected symbols
-    {model with Symbols = 
-                ((Map.ofList (List.map2 (fun x y -> (x,y)) compList newSymbols)
-                |> Map.fold (fun acc k v -> Map.add k v acc) UnselectedSymbols)
-    )}
+    { model with Symbols = 
+                    List.map2 (fun x y -> (x, y)) compList newSymbols
+                    |> List.fold (fun acc (k, v) -> Map.add k v acc) unselectedSymbols 
+    }
 
-let oneCompBoundsBothEdges (selectedSymbols: Symbol list) = 
-    let maxXSymCentre = 
-            selectedSymbols
-            |> List.maxBy (fun (x:Symbol) -> x.Pos.X + snd (getRotatedHAndW x)) 
-            |> getRotatedSymbolCentre
-    let minXSymCentre =
-            selectedSymbols
-            |> List.minBy (fun (x:Symbol) -> x.Pos.X)
-            |> getRotatedSymbolCentre
-    let maxYSymCentre = 
-            selectedSymbols
-            |> List.maxBy (fun (y:Symbol) -> y.Pos.Y+ fst (getRotatedHAndW y))
-            |> getRotatedSymbolCentre
-    let minYSymCentre =
-            selectedSymbols
-            |> List.minBy (fun (y:Symbol) -> y.Pos.Y)
-            |> getRotatedSymbolCentre
+/// <summary>Checks if the selected symbols are aligned on the same edge.</summary>
+/// <param name="selectedSymbols"> List of selected symbols.</param>
+/// <returns>True if symbols are aligned on the same edge.</returns>
+let oneCompBoundsBothEdges (selectedSymbols: Symbol list) : bool = 
+    let getSymbolCentreBy selector =
+        selectedSymbols
+        |> List.maxBy selector
+        |> getRotatedSymbolCentre
+
+    let maxXSymCentre = getSymbolCentreBy (fun (x:Symbol) -> x.Pos.X + snd (getRotatedHAndW x))
+    let minXSymCentre = getSymbolCentreBy (fun (x:Symbol) -> x.Pos.X)
+    let maxYSymCentre = getSymbolCentreBy (fun (y:Symbol) -> y.Pos.Y + fst (getRotatedHAndW y))
+    let minYSymCentre = getSymbolCentreBy (fun (y:Symbol) -> y.Pos.Y)
+
     (maxXSymCentre.X = minXSymCentre.X) || (maxYSymCentre.Y = minYSymCentre.Y)
     
+/// <summary>Finds the selected symbols in the model.</summary>
+/// <param name="compList"> List of ComponentId's of selected components.</param>
+/// <param name="model"> Current symbol model.</param>
+/// <returns>List of selected symbols.</returns>
+let findSelectedSymbols (compList: ComponentId list) (model: SymbolT.Model) : Symbol list= 
+        compList
+        |> List.map (fun id -> Map.find id model.Symbols)
 
-let findSelectedSymbols (compList: ComponentId list) (model: SymbolT.Model) = 
-    List.map (fun x -> model.Symbols |> Map.find x) compList
+/// <summary>Returns the scaling factor and offset centre for a single component.</summary>
+/// <param name="min"> Minimum value of the component.</param>
+/// <param name="matchMin"> Minimum value of the component after scaling.</param>
+/// <param name="max"> Maximum value of the component.</param>
+/// <param name="matchMax"> Maximum value of the component after scaling.</param>
+/// <returns>Scaling factor and offset centre.</returns>
+let getScalingFactorAndOffsetCentre (min:float) (matchMin:float) (max:float) (matchMax:float) : float * float= 
+    match (min, max, matchMin, matchMax) with
+    | (min, max, _, _) when min = max || matchMax <= matchMin -> (1., 0.)
+    | _ -> 
+        let scaleFact = (matchMin - matchMax) / (min - max)
+        let offsetC = (matchMin - min * scaleFact) / (1.-scaleFact)
+        (scaleFact, offsetC)
 
-let getScalingFactorAndOffsetCentre (min:float) (matchMin:float) (max:float) (matchMax:float) = 
-    let scaleFact = 
-        if min = max || matchMax <= matchMin then 1. 
-        else (matchMin - matchMax) / (min - max)
-    let offsetC = 
-        if scaleFact = 1. then 0.
-        else (matchMin - min * scaleFact) / (1.-scaleFact)
-    (scaleFact, offsetC)
-
-/// Return set of floats that define how a group of components is scaled
+/// <summary>Return set of floats that define how a group of components is scaled.</summary>
+/// <param name="matchBBMin"> Minimum value of the bounding box.</param>
+/// <param name="matchBBMax"> Maximum value of the bounding box.</param>
+/// <param name="selectedSymbols"> List of selected symbols.</param>
+/// <returns>Set of floats that define how a group of components is scaled.</returns>
 let getScalingFactorAndOffsetCentreGroup
     (matchBBMin:XYPos)
     (matchBBMax:XYPos)
     (selectedSymbols: Symbol list) : ((float * float) * (float * float)) = 
-    //(compList: ComponentId list)
-    //(model: SymbolT.Model)
 
-    //let selectedSymbols = List.map (fun x -> model.Symbols |> Map.find x) compList
+    let getMinMaxSymbol getPos getRotatedDim =
+        let maxSym = selectedSymbols |> List.maxBy (fun sym -> getPos sym.Pos + snd (getRotatedDim sym))
+        let minSym = selectedSymbols |> List.minBy (fun sym -> getPos sym.Pos)
+        (maxSym, minSym)
 
-    let maxXSym = 
-            selectedSymbols
-            |> List.maxBy (fun (x:Symbol) -> x.Pos.X + snd (getRotatedHAndW x)) 
+    let calculateNewOldMinMax maxSym minSym matchBBMax matchBBMin getRotatedDim =
+        let oldMax = (getRotatedSymbolCentre maxSym).X
+        let newMax = matchBBMax - (snd (getRotatedDim maxSym))/2.
+        let oldMin = (getRotatedSymbolCentre minSym).X
+        let newMin = matchBBMin + (snd (getRotatedDim minSym))/2.
+        (oldMin, newMin, oldMax, newMax)
 
-    let oldMaxX = (maxXSym |> getRotatedSymbolCentre).X
-    let newMaxX = matchBBMax.X - (snd (getRotatedHAndW maxXSym))/2.
+    let (maxXSym, minXSym) = getMinMaxSymbol (fun pos -> pos.X) getRotatedHAndW
+    let (oldMinX, newMinX, oldMaxX, newMaxX) = calculateNewOldMinMax maxXSym minXSym matchBBMax.X matchBBMin.X getRotatedHAndW
 
-    let minXSym =
-            selectedSymbols
-            |> List.minBy (fun (x:Symbol) -> x.Pos.X)
+    let (maxYSym, minYSym) = getMinMaxSymbol (fun pos -> pos.Y) getRotatedHAndW
+    let (oldMinY, newMinY, oldMaxY, newMaxY) = calculateNewOldMinMax maxYSym minYSym matchBBMax.Y matchBBMin.Y getRotatedHAndW
 
-    let oldMinX = (minXSym |> getRotatedSymbolCentre).X
-    let newMinX = matchBBMin.X + (snd (getRotatedHAndW minXSym))/2.
-    
-    let maxYSym = 
-            selectedSymbols
-            |> List.maxBy (fun (y:Symbol) -> y.Pos.Y+ fst (getRotatedHAndW y))
-
-    let oldMaxY = (maxYSym |> getRotatedSymbolCentre).Y
-    let newMaxY = matchBBMax.Y - (fst (getRotatedHAndW maxYSym))/2.
-
-    let minYSym =
-            selectedSymbols
-            |> List.minBy (fun (y:Symbol) -> y.Pos.Y)
-
-    let oldMinY = (minYSym |>  getRotatedSymbolCentre).Y
-    let newMinY = matchBBMin.Y + (fst (getRotatedHAndW minYSym))/2.
-    
     let xSC = getScalingFactorAndOffsetCentre oldMinX newMinX oldMaxX newMaxX
     let ySC = getScalingFactorAndOffsetCentre oldMinY newMinY oldMaxY newMaxY
     (xSC, ySC)
