@@ -161,6 +161,12 @@ type SegmentDirection =
     | Right
 
 
+let listToTuple3 (list: 'T list) =
+            match list with
+            | [a; b; c] -> (a, b, c)
+            | _ -> failwith "Expected list with 3 elements"
+
+            
 let calculateSegDirection (startPos: XYPos) (endPos: XYPos) =
     if startPos.X = endPos.X then 
         if startPos.Y < endPos.Y then Some Up
@@ -208,8 +214,34 @@ let segmentIntersectsASymbol (model: SheetT.Model) (wire: Wire) (segStart: XYPos
     |> List.exists (fun box ->
                     segmentIntersectsBoundingBox box segStart segEnd 
                     |> (function
-                            | Some _ -> true
-                            | None -> false))
+                        | Some _ -> true
+                        | None -> false))
+
+
+// Determine if two Asegments intersect at right angle, and return intersection position if they intersect
+let intersectsAtRightAngle (seg1: ASegment) (seg2: ASegment) =
+    let isHorizontal (segment: ASegment) = segment.Start.Y = segment.End.Y
+    let isVertical (segment: ASegment) = segment.Start.X = segment.End.X
+
+    if not (isHorizontal seg1 || isHorizontal seg2) then
+        None
+    else
+        let (horizontalSeg, verticalSeg) =
+            if isHorizontal seg1 then (seg1, seg2)
+            else (seg2, seg1)
+
+        let horizontalY = horizontalSeg.Start.Y
+        let verticalX = verticalSeg.Start.X
+
+        if (isHorizontal seg1 && isVertical seg2) || (isVertical seg1 && isHorizontal seg2) then
+            // One segment is horizontal and the other is vertical
+            if verticalX >= min horizontalSeg.Start.X horizontalSeg.End.X &&
+               verticalX <= max horizontalSeg.Start.X horizontalSeg.End.X &&
+               horizontalY >= min verticalSeg.Start.Y verticalSeg.End.Y &&
+               horizontalY <= max verticalSeg.Start.Y verticalSeg.End.Y then
+               Some { X = verticalX; Y = horizontalY } // Intersection
+            else None
+        else None
 
 
 //------------------------------------------------------------------------------------------------//
@@ -230,8 +262,7 @@ let countIntersectingSymbolPairs (model: SheetT.Model) =
                                                 | true -> 1
                                                 | false -> 0)
     |> List.reduce(+)
-    |> (fun x -> x / 2) // get pairs
-
+    |> (fun x -> x / 2) // divide by 2 since each pair counted twice
 
 
 // The number of distinct wire visible segments that intersect with one or more symbols
@@ -247,23 +278,30 @@ let countVisibleSegmentSymbolIntersections (model: SheetT.Model) =
     |> List.reduce(+)
 
 
+// The number of distinct pairs of segments that cross each other at right angles.
+// getnonzeroAsegs 
+// -> get all pairs of segs
+// -> write intersection at right angle function that gives pos
+// -> is pos = to any start or end pos of the segments then dont count 
+// otherwise +1
+// T3R 
+let countIntersectingSegmentPairs (model: SheetT.Model) =
+    let nonZeroASegments = Helpers.mapValues model.Wire.Wires
+                           |> Array.toList
+                           |> List.collect getNonZeroAbsSegments
+    
+    let intersectsWithAnEnd (pos: XYPos) (seg1: ASegment) (seg2: ASegment) =
+        pos = seg1.Start ||  pos = seg1.End ||  pos = seg2.Start ||  pos = seg2.End 
 
-
-// T3 just eliminate 0, check intersection where orientation different, remove segments where endA = StartB
-
-// Same net segments are from wires with the same source port.
-// BlockHelpers.partitionWiresIntoNets find with this
-
-// when two segments are on the same net (same source port), 
-// if the intersection is at the end of one or both of the segments, 
-// this is a T junction in a connected net which is not a visual problem and therefore not counted as an intersection.
-
-// similarly if two segments lie partly or wholly on top of each other, 
-// and are on same net, it should not be counted as am intersection. 
-// Note that in that case they have the same orientation: whereas for intersections the two segments always have opposite orientations.
-
-
-
+    
+    List.allPairs nonZeroASegments nonZeroASegments 
+    |> List.map (fun (seg1, seg2) -> match intersectsAtRightAngle seg1 seg2 with
+                                        | None -> 0
+                                        | Some pos -> match intersectsWithAnEnd pos seg1 seg2 with
+                                                        | true -> 0
+                                                        | false -> 1)  
+    |> List.reduce(+)
+    |> (fun x -> x / 2) 
 
 
 // T4 use duplicate visible segments to determine overlap
@@ -287,8 +325,6 @@ let totalVisibleWireSegmentLength (model: SheetT.Model) =
     |> List.reduce (+)
 
 
-
-
 // Make list of vertices for each wire, and note in which direction the wire is leaving that vertex
 // Then perform List.distinct to get only 1 right angle where multiple same-net wires are leaving the vertex in same direction
 // T5R
@@ -303,15 +339,15 @@ let countVisibleRightAngles (model: SheetT.Model) =
     |> List.length
 
 
+// Return from one function a list of all the
+// segments that retrace, and also a list of all the end of wire segments that retrace so
+// far that the next segment (index = 3 or Segments.Length – 4) - starts inside a symbol.
 // T6R 
 let getRetracedSegments (model: SheetT.Model) =  
     let wires = Helpers.mapValues model.Wire.Wires
                 |> Array.toList
 
-    // let checkRetrace (seg1: Segment) (seg2: Segment) =
-    //     if Math.Sign(seg1.Length) <> Math.Sign(seg2.Length)
-    //     then
-
+    // empty array if none
     let getRetraced (wire: Wire) = 
         let segList = wire.Segments
         ([], segList)
@@ -319,7 +355,7 @@ let getRetracedSegments (model: SheetT.Model) =
                 let index = curSeg.Index
                 if curSeg.Length = 0
                 then
-                    if Math.Sign(segList[index-1].Length) <> Math.Sign(segList[index+1].Length)
+                    if Math.Sign(segList[index-1].Length) <> Math.Sign(segList[index+1].Length) // these can't be zero 
                     then 
                         let retracedSegs = (segList[index-1],segList[index],segList[index+1])
                         retracedSegs :: outputList
@@ -328,16 +364,53 @@ let getRetracedSegments (model: SheetT.Model) =
                 else 
                     outputList ) 
         |> List.rev // to get in order found
+        
 
-    wires
-    |> List.collect getRetraced
+    // assume first wire cannot go back into symbol
+    let getRetracedEndsInSymbol (wire: Wire) = 
+        let segList = wire.Segments
+                
+        let startSegs = [segList[0];segList[1];segList[2]]
+        let endIndex = (segList.Length) - 1
+        // endSegs flipped so can be applied to same function
+        let endSegsRev = [segList[endIndex];segList[endIndex-1];segList[endIndex-2]]
+
+        let checkSegs (segs: List<Segment>) =
+            if segs[1].Length = 0 && Math.Sign(segs[0].Length) <> Math.Sign(segs[2].Length)
+            then
+                if abs(segs[2].Length) > abs(segs[0].Length)
+                then true
+                else false
+            else false
+            
+        if checkSegs startSegs && checkSegs endSegsRev
+            then Some [listToTuple3 startSegs; listToTuple3 (List.rev <| endSegsRev)]
+        elif checkSegs startSegs
+            then Some [listToTuple3 startSegs]
+        elif checkSegs endSegsRev 
+            then Some [listToTuple3 (List.rev <| endSegsRev)]
+        else None
 
 
-// return segs
+    let allRetracedSegments =
+        wires
+        |> List.collect getRetraced
+        |> (function
+            | [] -> None
+            | x -> Some x)
+        
 
-// for end check abs value greater than other if diff
+    let allRetracedEndsInSymbol =
+        wires
+        |> List.collect (fun wire ->
+            match getRetracedEndsInSymbol wire with
+            | Some list -> list 
+            | None -> [])
+        |> (function
+            | [] -> None
+            | x -> Some x)
+        
 
-// no need to check two 0 in a row - not possible
-
-// thinking maybe get location all zeros then check them, not sure
+    {| allRetracedSegments = allRetracedSegments; 
+       allRetracedEndSegmentsInSymbol = allRetracedEndsInSymbol |}
 
