@@ -55,14 +55,16 @@ let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
 //--------------------------------------B Helper Functions----------------------------------------//
 //------------------------------------------------------------------------------------------------//
 
-
+// B1RW
 /// <summary> Lens for retrieving/setting the dimensions of a custom component symbol</summary>
 /// <param name="symbol"> The custom component symbol</param>
 /// <param name="newDimensions"> New dimensions in form (height, width) if you wish to set them</param>
-/// <returns> The dimensions of the custom component symbol in the form (height, width) 
-///           OR the symbol with new dimensions
+/// <returns> 
+/// The dimensions of the custom component symbol in the form (height, width)
+/// <para>
+/// OR the symbol with new dimensions
+/// </para> 
 /// </returns>
-// B1RW
 let customComponentDimensions_ =
     let getCCDimensions (symbol: Symbol) = 
         getRotatedHAndW symbol
@@ -74,8 +76,12 @@ let customComponentDimensions_ =
     Lens.create getCCDimensions setCCDimensions
 
 
-// Update the position of a symbol on the sheet
 // B2W
+/// <summary> Update the position of a symbol on the sheet</summary>
+/// <param name="model"> Model of the sheet</param>
+/// <param name="symbol"> The symbol to have position adjusted</param>
+/// <param name="newPos"> New position of top left of symbol </param>
+/// <returns> A new sheet model with the postion of the symbol set to newPos</returns>
 let updateSymbolPosition (model: SheetT.Model) (symbol: Symbol)(newPos: XYPos) = 
     let updatedSymbol = {symbol with 
                             Pos = newPos;}
@@ -95,13 +101,20 @@ let updateSymbolPosition (model: SheetT.Model) (symbol: Symbol)(newPos: XYPos) =
     |> Optic.set boundingBoxes_ updatedBBMap
 
 
-// Read/write the order of ports on a specified side of a symbol
-
 // B3R
+/// <summary> Read the order of ports on a specified side of a symbol</summary>
+/// <param name="symbol"> The symbol from which port order should be read</param>
+/// <param name="edge"> The side on which port order should be read</param>
+/// <returns> A list containing the port ids on the specified edge in order</returns>
 let getPortOrderOnEdge (symbol: Symbol) (edge: Edge) = 
         (Optic.get portMaps_ symbol).Order[edge]
        
 // B3W
+/// <summary> Write the order of ports on a specified side of a symbol</summary>
+/// <param name="symbol"> The symbol on which port order should be written</param>
+/// <param name="edge"> The side on which port order should be written</param>
+/// <param name="newPortOrder"> List containing port ids in desired order</param>
+/// <returns> Symbol with updated port order on specified edge</returns>
 let setPortOrderOnEdge (symbol: Symbol) (edge: Edge) (newPortOrder: list<string>) = 
         let newOrderMap = 
                 (Optic.get portMaps_ symbol).Order
@@ -116,29 +129,52 @@ let setPortOrderOnEdge (symbol: Symbol) (edge: Edge) (newPortOrder: list<string>
         Optic.set portMaps_ newPortMap symbol
 
 
-// The reverses state of the inputs of a MUX2
 // B4RW
+/// <summary> Lens for retrieving/setting the ReversedInputPorts state of a symbol </summary>
+/// <remarks> Used for MUX and DEMUX components</remarks>
+/// <param name="symbol"> The symbol </param>
+/// <param name="bool option"> The new ReversedInputPorts state if setting </param>
+/// <returns> 
+/// The ReversedInputPorts state of a symbol
+/// <para>
+/// OR the symbol with updated ReversedInputPorts state
+/// </para> 
+/// </returns>
 let reversedInputPorts_ = 
     Lens.create (fun symbol -> symbol.ReversedInputPorts) 
                 (fun newState symbol -> {symbol with ReversedInputPorts = newState})
 
 
-// The position of a port on the sheet. It cannot directly be written.
 // B5R
+/// <summary> Get the XY position of a port on the sheet </summary>
+/// <param name="model"> Model of the sheet</param>
+/// <param name="portId"> The id of a port</param>
+/// <returns> The XY position of the port specified by portId </returns>
 let getPortPosition (model: SheetT.Model) (portId : string) = 
     let symModel = Optic.get SheetT.symbol_ model
 
     getPortLocation None symModel portId
 
 
-// The Bounding box of a symbol outline (position is contained in this)
 // B6R
+/// <summary> Get the bounding box a symbol </summary>
+/// <remarks> There is an existing function in issie for this </remarks> 
+/// <param name="symbol"> The symbol </param>
+/// <returns> The bounding box of the specified symbol </returns>
 let getSymbolBoundingBox (symbol: Symbol) = 
     getSymbolBoundingBox symbol
 
 
-// The rotation state of a symbol
 // B7RW
+/// <summary> Lens for getting/setting the rotation state of a symbol </summary>
+/// <param name="Symbol"> The symbol </param>
+/// <param name="Rotation"> The new rotation state if setting </param>
+/// <returns> 
+/// The rotation state of a symbol
+/// <para>
+/// OR the symbol with updated rotation state
+/// </para> 
+/// </returns>
 let symbolRotationState_ = 
     Lens.create (fun symbol -> symbol.STransform.Rotation) 
                 (fun newRotation symbol -> {symbol with STransform = {symbol.STransform with Rotation = newRotation}})
@@ -146,6 +182,15 @@ let symbolRotationState_ =
 
 // The flip state of a symbol
 // B8RW
+/// <summary> Lens for getting/setting the flip state of a symbol </summary>
+/// <param name="Symbol"> The symbol </param>
+/// <param name="bool"> The new flip state if setting </param>
+/// <returns> 
+/// The flip state of a symbol
+/// <para>
+/// OR the symbol with updated flip state
+/// </para> 
+/// </returns>
 let symbolFlipState_ = 
     Lens.create (fun symbol -> symbol.STransform.Flipped) 
                 (fun newFlip symbol -> {symbol with STransform = {symbol.STransform with Flipped = newFlip}})
@@ -163,12 +208,31 @@ type SegmentDirection =
     | Right
 
 
+/// <summary>
+/// Converts a list with three elements into a tuple of three values.
+/// </summary>
+/// <typeparam name="T">The type of elements in the list.</typeparam>
+/// <param name="list">The input list.</param>
+/// <returns>
+/// A tuple of three values containing the elements from the input list.
+/// </returns>
+/// <exception cref="System.InvalidOperationException">
+/// Thrown when the input list does not contain exactly three elements.
+/// </exception>
 let listToTuple3 (list: 'T list) =
             match list with
             | [a; b; c] -> (a, b, c)
-            | _ -> failwith "Expected list with 3 elements"
+            | _ -> failwith "Expected list with 3 elements" // Should not happen with correct usage
 
-            
+
+/// <summary>
+/// Calculates the direction of a line segment defined by its start and end positions
+/// </summary>
+/// <param name="startPos">The starting position of the line segment</param>
+/// <param name="endPos">The ending position of the line segment</param>
+/// <returns>
+/// A value indicating the direction of the line segment
+/// </returns>
 let calculateSegDirection (startPos: XYPos) (endPos: XYPos) =
     if startPos.X = endPos.X then 
         if startPos.Y < endPos.Y then Some Up
@@ -176,9 +240,19 @@ let calculateSegDirection (startPos: XYPos) (endPos: XYPos) =
     elif startPos.Y = endPos.Y then 
         if startPos.X < endPos.X then Some Right
         else Some Left
-    else None // Shouldn't happen with visible segments
+    else None // Shouldn't happen with visible segments since always horizontal or vertical
 
 
+/// <summary>
+/// Retrieves wires with visible segment vectors from sheet model.
+/// </summary>
+/// <param name="model">The sheet model</param>
+/// <returns>
+/// A list of tuples containing:
+/// - The component ID associated with the wire.
+/// - The wire.
+/// - The visible segment vectors of the wire.
+/// </returns>
 let getWiresWithVisibleSegmentVectors (model: SheetT.Model) = 
     model.Wire.Wires
     |> Map.toList
@@ -187,7 +261,16 @@ let getWiresWithVisibleSegmentVectors (model: SheetT.Model) =
         |> (fun visSegmentVectors -> (cId, wire, visSegmentVectors)))
 
 
-// return a list with (start pos, end pos) for visible segments of a wire, taking visible sectors vectors as parameter
+/// <summary>
+/// Returns a list of tuples representing the absolute start and end positions of visible segments of a wire.
+/// </summary>
+/// <param name="wire">The wire for which absolute visible segments are determined.</param>
+/// <param name="visSegmentVectors">The list of visible segment vectors.</param>
+/// <returns>
+/// A list of tuples where each tuple contains:
+/// - The start position of a visible segment.
+/// - The end position of the same visible segment.
+/// </returns>
 let getAbsVisibleSegments (wire: Wire) (visSegmentVectors: List<XYPos>) = 
     ([(wire.StartPos, wire.StartPos)], visSegmentVectors)
     ||> List.fold (fun posTupleList curVec -> 
@@ -198,12 +281,33 @@ let getAbsVisibleSegments (wire: Wire) (visSegmentVectors: List<XYPos>) =
     |> List.tail // Remove first element which is just start pos
 
 
+/// <summary>
+/// Retrieves wires with absolute visible segments from sheet model.
+/// </summary>
+/// <param name="model">The sheet model</param>
+/// <returns>
+/// A list of tuples containing:
+/// - The component ID associated with the wire.
+/// - The wire.
+/// - The list of absolute visible segments of the wire.
+/// </returns>
 let getWiresWithAbsVisibleSegments (model: SheetT.Model) = 
     getWiresWithVisibleSegmentVectors model
     |> List.map (fun (cId, wire, visSegmentVectors) ->
         (cId, wire, getAbsVisibleSegments wire visSegmentVectors))
 
 
+/// <summary>
+/// Checks if a line segment intersects with at least one symbol bounding box in the given sheet model,
+/// excluding the source and target symbols of the wire the segment belongs to.
+/// </summary>
+/// <param name="model">The sheet model containing the symbols and bounding boxes.</param>
+/// <param name="wire">The wire which segment belongs to</param>
+/// <param name="segStart">The start position of the line segment.</param>
+/// <param name="segEnd">The end position of the line segment.</param>
+/// <returns>
+/// <see langword="true"/> if the line segment intersects with any symbol bounding box excluding the source and target symbols of the wire; otherwise, <see langword="false"/>.
+/// </returns>
 let segmentIntersectsASymbol (model: SheetT.Model) (wire: Wire) (segStart: XYPos) (segEnd: XYPos) = 
     let boundingBoxes =
         model.BoundingBoxes
@@ -220,7 +324,14 @@ let segmentIntersectsASymbol (model: SheetT.Model) (wire: Wire) (segStart: XYPos
                         | None -> false))
 
 
-// Determine if two Asegments intersect at right angle, and return intersection position if they intersect
+/// <summary>
+/// Determines if two Asegments intersect at a right angle and returns the intersection position if they intersect.
+/// </summary>
+/// <param name="seg1">The first Asegment.</param>
+/// <param name="seg2">The second Asegment.</param>
+/// <returns>
+/// The intersection XY position if the line segments intersect at a right angle; otherwise, <see langword="None"/>.
+/// </returns>
 let intersectsAtRightAngle (seg1: ASegment) (seg2: ASegment) =
     let isHorizontal (segment: ASegment) = segment.Start.Y = segment.End.Y
     let isVertical (segment: ASegment) = segment.Start.X = segment.End.X
@@ -250,9 +361,18 @@ let intersectsAtRightAngle (seg1: ASegment) (seg2: ASegment) =
 //--------------------------------------T Helper Functions----------------------------------------//
 //------------------------------------------------------------------------------------------------//
 
+// All functions with the exception of T6R have been tested in issie 
+// by passing current sheet model and checking if function output corresponds to what is displayed
 
-// The number of pairs of symbols that intersect each other
+
 // T1R
+/// <summary>
+/// Counts the number of pairs of symbols that intersect each other on a given sheet model.
+/// </summary>
+/// <param name="model">The sheet model containing the symbols and their bounding boxes.</param>
+/// <returns>
+/// The number of pairs of symbols that intersect each other.
+/// </returns>
 let countIntersectingSymbolPairs (model: SheetT.Model) = 
     let boundingBoxes =
         Helpers.mapValues model.BoundingBoxes
@@ -267,9 +387,14 @@ let countIntersectingSymbolPairs (model: SheetT.Model) =
     |> (fun x -> x / 2) // divide by 2 since each pair counted twice
 
 
-// The number of distinct wire visible segments that intersect with one or more symbols
-// Get source and target symbol, dont count intersections with these
 // T2R
+/// <summary>
+/// Counts the number of distinct wire visible segments that intersect with one or more symbols in the model.
+/// </summary>
+/// <param name="model">The sheet model containing the wires and symbols.</param>
+/// <returns>
+/// The number of distinct wire visible segments that intersect with one or more symbols.
+/// </returns>
 let countVisibleSegmentSymbolIntersections (model: SheetT.Model) = 
     getWiresWithAbsVisibleSegments model
     |> List.map (fun (_,wire,absVisSegements) ->
@@ -280,13 +405,27 @@ let countVisibleSegmentSymbolIntersections (model: SheetT.Model) =
     |> List.reduce(+)
 
 
-// The number of distinct pairs of segments that cross each other at right angles.
-// getnonzeroAsegs 
-// -> get all pairs of segs
-// -> write intersection at right angle function that gives pos
-// -> is pos = to any start or end pos of the segments then dont count 
-// otherwise +1
-// T3R 
+// T3R
+/// <summary>
+/// Counts the number of distinct pairs of segments that cross each other at right angles.
+/// </summary>
+/// <remarks>
+/// The function first retrieves all non-zero-length absolute segments from the wires in the model.
+/// It then calculates all possible pairs of these segments.
+/// <para>
+/// For each pair of segments, it checks if they intersect at a right angle.
+/// </para>
+/// <para>
+/// If they do, it checks if the intersection position coincides with the start or end position of any segment in the pair.
+/// This is to remove from the count same net wires intersecting at one or both ends. If not, it increments the count by one. 
+/// </para>
+/// Finally, the function divides the total count by two since each intersecting pair is counted twice.
+/// <para> NB Segments on same net on top of each other are not counted since these do not intersect at right angles</para>
+/// </remarks>
+/// <param name="model">The sheet model containing the wires and segments.</param>
+/// <returns>
+/// The number of distinct pairs of segments that intersect each other at right angles.
+/// </returns>
 let countIntersectingSegmentPairs (model: SheetT.Model) =
     let nonZeroASegments = Helpers.mapValues model.Wire.Wires
                            |> Array.toList
@@ -303,17 +442,24 @@ let countIntersectingSegmentPairs (model: SheetT.Model) =
                                                         | true -> 0
                                                         | false -> 1)  
     |> List.reduce(+)
-    |> (fun x -> x / 2) 
+    |> (fun x -> x / 2) // divide by 2 since each pair counted twice
 
 
-// T4 use duplicate visible segments to determine overlap
-// Sum of (visible) wiring segment length
-// currently counts both if segment contained within another, only removes exact duplicates
-// could check if contained and remove inner
-// group by net, then group by x, group by y. keep longest from each one
-// or don't group by net, just same x/y
-// List.groupBy
 // T4R
+/// <summary>
+/// Calculates the sum of the lengths of visible wiring segments in the model.
+/// </summary>
+/// <remarks>
+/// The function first retrieves all distinct absolute visible segments from the wires in the model,
+/// considering duplicate visible segments to determine overlap.
+/// <para>
+/// It then calculates the length of each segment and sums them up.
+/// </para>
+/// </remarks>
+/// <param name="model">The sheet model containing the wires and segments.</param>
+/// <returns>
+/// The total length of visible wiring segments in the model.
+/// </returns>
 let totalVisibleWireSegmentLength (model: SheetT.Model) =
     let allDistinctAbsVisibleSegments = 
         getWiresWithVisibleSegmentVectors model
@@ -327,24 +473,66 @@ let totalVisibleWireSegmentLength (model: SheetT.Model) =
     |> List.reduce (+)
 
 
-// Make list of vertices for each wire, and note in which direction the wire is leaving that vertex
-// Then perform List.distinct to get only 1 right angle where multiple same-net wires are leaving the vertex in same direction
 // T5R
+/// <summary>
+/// Counts the number of visible wire right-angles in the sheet model
+/// </summary>
+/// <remarks>
+/// The function first retrieves absolute visible segments for each wire in the model.
+/// For each wire, the first segment is removed since the vertex taken from it later on would be on a symbol.
+/// <para>
+/// The function then obtains a list of vertices from the remaining segments,
+/// and calculates the direction in which the wire is leaving each vertex using <see cref="calculateSegDirection"/>.
+/// </para>
+/// <para>
+/// The function then applies <see cref="List.distinct"/> to the list of vertices and directions to get only one vertex 
+/// where multiple same-net wires are leaving the vertex in the same direction.
+/// </para>
+/// Finally, it counts the number of distinct vertices which corresponds to the number of visible wire right angles.
+/// </remarks>
+/// <param name="model">The sheet model containing the wires and segments.</param>
+/// <returns>
+/// The number of visible wire right-angles in the sheet model
+/// </returns>
 let countVisibleRightAngles (model: SheetT.Model) =
     getWiresWithAbsVisibleSegments model
     |> List.collect (fun (_,_,absVisSegements) ->
         absVisSegements
         |> List.tail // remove first since vertex taken would be on symbol
-        |> List.map (fun (startPos, endPos) ->
-            (startPos, calculateSegDirection startPos endPos)))
+        |> List.map (fun (vertex, endPos) ->
+            (vertex, calculateSegDirection vertex endPos)))
     |> List.distinct
     |> List.length
 
 
-// Return from one function a list of all the
-// segments that retrace, and also a list of all the end of wire segments that retrace so
-// far that the next segment (index = 3 or Segments.Length – 4) - starts inside a symbol.
-// T6R 
+// T6R
+/// <summary>
+/// Retrieves all retraced wire segments and all segments retraced into symbols from the given sheet model.
+/// </summary>
+/// <remarks>
+/// The function first retrieves a list of all wires from the model.
+/// For each wire, it checks separately for retraced segments and for segments that are retraced into symbols.
+/// <para>
+/// Retraced segments are those where the lengths of the two segments on either side of a zero length segment have opposite signs.
+/// </para>
+/// <para>
+/// Segments retraced into symbols are those where the wire retraces so far 
+/// that the next segment starts inside or on the wrong side of a symbol.
+/// </para>
+/// These occur when the 2nd non-zero segment from either end of a wire has a 
+/// length which has the opposite sign to and an absolute value greater than 
+/// the length of the 1st non-zero segment at the same end of the wire.
+/// <para>
+/// NB The tuples returned in the lists contain 3 segments: 
+/// the two segments that retrace AND the 0 length segment inbetween them
+/// </para>
+/// </remarks>
+/// <param name="model">The sheet model containing the wires and symbols.</param>
+/// <returns>
+/// A record containing:
+/// - <c>allRetracedSegments</c>: A list of all retraced wire segments.
+/// - <c>allSegmentsRetracedIntoSymbol</c>: A list of all segments that retrace into a symbol.
+/// </returns>
 let getRetracedSegments (model: SheetT.Model) =  
     let wires = Helpers.mapValues model.Wire.Wires
                 |> Array.toList
@@ -367,14 +555,13 @@ let getRetracedSegments (model: SheetT.Model) =
                     outputList ) 
         |> List.rev // to get in order found
         
-
     // assume first wire cannot go back into symbol
     let getRetracedIntoSymbol (wire: Wire) = 
         let segList = wire.Segments
                 
         let startSegs = [segList[0];segList[1];segList[2]]
         let endIndex = (segList.Length) - 1
-        // endSegs flipped so can be applied to same function
+        // endSegs reversed so can be applied to same function
         let endSegsRev = [segList[endIndex];segList[endIndex-1];segList[endIndex-2]]
 
         let checkSegs (segs: List<Segment>) =
@@ -401,7 +588,6 @@ let getRetracedSegments (model: SheetT.Model) =
             | [] -> None
             | x -> Some x)
         
-
     let allRetracedIntoSymbol =
         wires
         |> List.collect (fun wire ->
@@ -415,4 +601,3 @@ let getRetracedSegments (model: SheetT.Model) =
 
     {| allRetracedSegments = allRetracedSegments; 
        allSegmentsRetracedIntoSymbol = allRetracedIntoSymbol |}
-

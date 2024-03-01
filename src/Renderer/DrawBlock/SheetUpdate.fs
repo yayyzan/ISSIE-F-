@@ -190,7 +190,7 @@ let update (msg : Msg) (issieModel : ModelType.Model): ModelType.Model*Cmd<Model
         | Drag -> 
             //printfn "running sheet.update"
             mDragUpdate model mMsg
-        | Up -> printfn $"intersecting segment pairs = {SheetBeautifyHelpers.countIntersectingSegmentPairs model}"; mUpUpdate model mMsg
+        | Up -> mUpUpdate model mMsg
         | Move -> mMoveUpdate model mMsg
 
     | UpdateBoundingBoxes ->
