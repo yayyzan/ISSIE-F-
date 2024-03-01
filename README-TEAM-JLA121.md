@@ -3,11 +3,15 @@
  ---------------------
 
  ### Asserts
+
+ - **Lines 400-421**
   - Added `failOnBeautifyIncreasesRightAngles` function which takes two sheet models, one before and one after beautify. Test fails if number right angles greater in post-beautification sheet.
 
  - Included `failOnSymbolIntersectsSymbol` since this is something we never want to happen after beautification.
 
  ### Improving test circuit generation
+
+  - Main changes **Lines 128-196**
 
   - I have added `simpleSymbol` type which contains
 
