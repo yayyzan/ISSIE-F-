@@ -10,6 +10,34 @@ open Operators
 open BlockHelpers
 open SymbolResizeHelpers
 
+(*
+    - jla121 changes to RotateScale - My section to improve was lines 360 -> 470 in original file.
+
+    - I have improved 3 functions, rotateSymbolInBlock, flipSymbolInBlock and scaleSymbolInBlock
+
+    - Please find detailed full descriptions of changes above each function
+    
+    - To Summarise:
+        - Where suitable, I have performed abstraction by creating a new function 
+          to simplify a pipeline or another function which is overly verbose
+          
+        - I have updated the XML comments of all functions to give more accurate descriptions 
+          of their functionality and parameters
+
+        - I have renamed values where appropriate to improve readability and clarity
+
+        - I have generally cleaned up the code, making existing variable names and 
+          syntax more consistent and readable
+
+        - Removed redundancy where possible
+
+    - NB I have realised that scaleSymbolInBlock is not used in issie, 
+      and I am not sure it even functions correctly.
+      Therefore I think it should probably be removed but for the purpose of this CW 
+      I have made improvements and left it in for now.
+*)
+
+
 (* 
     This module contains the code that rotates and scales blocks of components.
     It was collected from HLP work in 2023 and has some technical debt and also unused functions.
@@ -362,27 +390,24 @@ let adjustPosForBlockFlip
 //---------------------------------------Start of Changes-----------------------------------------//
 //------------------------------------------------------------------------------------------------//
 
-// ORIGINAL LINES: 360 -> 470 
 
 (*
+    - symHeight, symWidth - changed names to more accurately represent what they are
 
- - symHeight, symWidth - changed names to more accurately show what they are
+    - Input wrapping - Created clockwiseRotation to make it more clearly identify what value is 
+                        and to prevent (invertRotation rotation) from being called multiple times in function
 
- - input wrapping - clockwise rotation to make it more clear and used a invertRotation rotation was being called a few times throughout
+    - XML
+        - Updated summary to be more accurate
+        - Change rotation description to represent what it really is - degrees anticlockwise
+        - Corrected block to blockCentre and updated description
+        - Added remark to describe usage
+        - Fixed return grammar error
 
- - XML
-    - Updated summary to be more accurate
-    - change rotation to represent what it really is - degrees anticlockwise
-    - fixed block to blockCentre and updated description
-    - added remark to describe usage
-    - fixed return grammar error
+    - Fixed indentation at end 
 
- - fixed indentation at end 
-
- - Made spacing consistent in function parameters
-
+    - Made spacing consistent in function parameters
 *)
-
 /// <summary>HLP 23: AUTHOR Ismagilov - Rotate a symbol about the centre of a bounding box</summary>
 /// <param name="rotation">  The rotation in degrees anticlockwise</param>
 /// <param name="blockCentre"> The centre of bounding box which symbol is rotated about</param>
@@ -420,35 +445,31 @@ let rotateSymbolInBlock
 
 
 (*
+    - symHeight, symWidth - changed names to more accurately represent what they are
 
- - symHeight, symWidth - changed names to more accurately show what they are
+    - XML
+        - Updated summary to be more accurate
+        - Corrected block to blockCentre and updated description
+        - Added remark to describe usage
+        - Changed return wording
+        - Improved wording of flip parameter
 
- - XML
-    - Updated summary to be more accurate
-    - fixed block to blockCentre and updated description
-    - added remark to describe usage
-    - changed return wording
-    - Improved wording flip parameter
+    - Moved flipPortList inside of newPortOrder since it is only called in there
 
- - Moved flipPortList inside of newPortOrder since it is only called in there
+    - Added 'new' to some of the names of calculated values to clearly represent what they are
 
- - Added new to some of the names of calculated values to represent what they are
+    - Removed redundant Edge qualifier in newPortOrder function
+    
+    - Made variable names consistent, e.g camelCase for newComponent
 
- - Removed redundant Edge qualifier in newPortOrder function
- 
- - Made variable names consistent, e.g camelCase for newComponent
+    - Changed some pipelines to be vertical so more readable
 
- - Changed some pipelines to be vertical so more readable
+    - Changed some spacing throughout
 
- - Changed some spacing throughout
+    - Created rotateFlipped180 function to clean up final pipeline and to clearly dictate what is happening
 
- - Created rotateFlipped180 function to clean up final pipeline and to clearly dictate what is happening
-
- - Also changed sym to horizontalFlippedSym in pipeline to show what it is 
-
+    - Also changed sym to horizontalFlippedSym in pipeline to show what it is 
 *)
-
-
 /// <summary>HLP 23: AUTHOR Ismagilov - Flip a symbol horizontally or vertically about the centre of a bounding box</summary>
 /// <param name="flip">  Specifies whether to flip horizontally or vertically.</param>
 /// <param name="blockCentre"> The centre of bounding box which symbol is flipped about</param>
@@ -505,31 +526,38 @@ let flipSymbolInBlock
             | FlipHorizontal -> horizontalFlippedSym
             | FlipVertical -> rotateFlipped180 horizontalFlippedSym)
             
+
 (*
- - function not used in issie 
-   scaling doesn't happen when block scaled 
-   could be removed but left in for now as I assume could be useful at some point
+    - Function not used in issie, not sure it works correctly.
+      Has been replaced by newer code to calculate symbol postion upon block scaling.
+      Should probably be removed but I have made improvements and left in for now.
 
- - removed unnecessary comment of parameter in first line
+    - Removed unnecessary comment of parameter in first line
 
- - Moved xProp/yProp onto separate lines and improved comment
+    - Moved xProp/yProp onto separate lines and improved comment
 
- - Cleaned up symbol return at end 
+    - Changed name 'newCenter' to 'newSymCentre' to be more representative
+    - Created scale function to avoid repetition, and to simplify newSymCentre function
 
- - symHeight, symWidth - changed names to more accurately show what they are
+    - Cleaned up syntax of symbol return at end 
 
- - Spaced code to be more readable (newPos)
+    - symHeight, symWidth - changed names to more accurately represent what they are
+
+    - Change name newPos to newTopLeft for clarity, also fixed error calculating y of top left
+
+    - Spaced code to be more readable, e.g newTopLeft now on 2 lines
+
+    - XML
+        - Updated summary to be more accurate
+        - Updated description of all three parameters to better describe what they are
+        - Updated description of return
 *)
- 
-// NEED TO DO XML COMMENTS
-
-// CLEAN UP NEW CENTRE FUNCTION
-
-/// <summary>HLP 23: AUTHOR Ismagilov - Scales selected symbol up or down.</summary>
-/// <param name="scaleType"> Scale up or down. Scaling distance is constant</param>
-/// <param name="block"> Bounding box of selected components</param>
-/// <param name="sym"> Symbol to be rotated</param>
-/// <returns>New symbol after scaled about block centre.</returns>
+/// <summary>HLP 23: AUTHOR Ismagilov - Adjusts position of a symbol when block containing it is scaled</summary>
+/// Scales selected symbol up or down centre of a bounding box
+/// <param name="scaleType"> Specifies whether block is scaled up or down. Scaling distance is constant</param>
+/// <param name="block"> Bounding box of block containing symbol</param>
+/// <param name="sym"> Symbol to have position adjusted</param>
+/// <returns> New symbol with position adjusted for block scaling </returns>
 let scaleSymbolInBlock
     (scaleType: ScaleType)
     (block: BoundingBox)
@@ -541,21 +569,23 @@ let scaleSymbolInBlock
     let xProp = (symCentre.X - block.TopLeft.X) / block.W 
     let yProp = (symCentre.Y - block.TopLeft.Y) / block.H
 
-    let newCenter = 
+    let scale (topLeftShift: float) (blockDimensionDelta: float) = 
+        {X = (block.TopLeft.X + topLeftShift) + ((block.W + blockDimensionDelta) * xProp) 
+         Y = (block.TopLeft.Y + topLeftShift) + ((block.H + blockDimensionDelta) * yProp)}
+
+    let newSymCentre =
         match scaleType with
-            | ScaleUp ->
-                {X = (block.TopLeft.X-5.) + ((block.W+10.) * xProp); Y = (block.TopLeft.Y-5.) + ((block.H+10.) * yProp)}
-            | ScaleDown ->
-                {X = (block.TopLeft.X+5.) + ((block.W-10.) * xProp); Y = (block.TopLeft.Y+5.) + ((block.H-10.) * yProp)}
+            | ScaleUp -> scale -5. 10.
+            | ScaleDown -> scale 5. -10.
 
     let symHeight,symWidth = getRotatedHAndW sym
-    let newPos = { X = (newCenter.X) - symWidth/2. 
-                   Y = (newCenter.Y) - symHeight/2. }
+    let newTopLeft = { X = (newSymCentre.X) - symWidth/2. 
+                       Y = (newSymCentre.Y) + symHeight/2. }
 
-    let newComponent = {sym.Component with X = newPos.X; Y = newPos.Y}
+    let newComponent = {sym.Component with X = newTopLeft.X; Y = newTopLeft.Y}
 
     { sym with 
-        Pos = newPos 
+        Pos = newTopLeft
         Component = newComponent  
         LabelHasDefaultPos = true }
 

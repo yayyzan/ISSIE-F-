@@ -56,14 +56,16 @@ let visibleSegments (wId: ConnectionId) (model: SheetT.Model): XYPos list =
 //------------------------------------------------------------------------------------------------//
 
 
-// The dimensions of a custom component symbol
-// dimensions in form (height * width)
+/// <summary> Lens for retrieving/setting the dimensions of a custom component symbol</summary>
+/// <param name="symbol"> The custom component symbol</param>
+/// <param name="newDimensions"> New dimensions in form (height, width) if you wish to set them</param>
+/// <returns> The dimensions of the custom component symbol in the form (height, width) 
+///           OR the symbol with new dimensions
+/// </returns>
 // B1RW
 let customComponentDimensions_ =
     let getCCDimensions (symbol: Symbol) = 
-        let h = symbol.Component.H
-        let w = symbol.Component.W
-        (h, w)
+        getRotatedHAndW symbol
     
     let setCCDimensions (newDimensions: (float * float)) (symbol: Symbol) = 
         let newHeight, newWidth = newDimensions
