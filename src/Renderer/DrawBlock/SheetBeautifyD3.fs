@@ -30,22 +30,23 @@ open Optics
 open Optics.Operators
 
 // my plan is to modify the ports to contain a flag as to whether the wires are labeled or not
-// let portWireLabeled_ (sheet: SheetT.Model) : Lens<OutputPortId, bool> =
-let portWireLabeled_ (sheet: SheetT.Model) : Lens<OutputPortId, Port> =
+// let portWireLabeled_ (outputPortId: OutputPortId) : Lens<SheetT.Model, bool> =
+let portWireLabeled_ (outputPortId: OutputPortId) : Lens<SheetT.Model, Port> =
+  let port_ = symbol_ >-> ports_
 
-  let getPort' outputId =
-    // match outputId with | OutputPortId id -> (getPort sheet.Wire.Symbol id).IsWireLabeled
-    match outputId with | OutputPortId id -> getPort sheet.Wire.Symbol id
+  let getPort' (sheet: SheetT.Model) =
+    Optic.get port_ sheet
+    // port should be there, if this is a concern we can use prism
+    |> Map.find (getOutputPortIdStr outputPortId)
 
   // let setPort wireLabeled outputId  =
-  let setPort curPort outputId =
-    let port_ = symbol_ >-> ports_
+  let setPort curPort (sheet: SheetT.Model) =
 
     // let curPort = getPort' outputId
     let curMap = Optic.get port_ sheet
     
     // Optic.set port_ (Map.add (getOutputPortIdStr outputId) { curPort with IsWireLabeled = wireLabeled } curMap) sheet
-    Optic.set port_ (Map.add (getOutputPortIdStr outputId) curPort curMap) sheet
+    Optic.set port_ (Map.add (getOutputPortIdStr outputPortId) curPort curMap) sheet
 
   getPort', setPort
 
