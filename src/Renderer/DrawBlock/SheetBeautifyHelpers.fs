@@ -367,7 +367,7 @@ let getRetracedSegments (model: SheetT.Model) =
         
 
     // assume first wire cannot go back into symbol
-    let getRetracedEndsInSymbol (wire: Wire) = 
+    let getRetracedIntoSymbol (wire: Wire) = 
         let segList = wire.Segments
                 
         let startSegs = [segList[0];segList[1];segList[2]]
@@ -400,10 +400,10 @@ let getRetracedSegments (model: SheetT.Model) =
             | x -> Some x)
         
 
-    let allRetracedEndsInSymbol =
+    let allRetracedIntoSymbol =
         wires
         |> List.collect (fun wire ->
-            match getRetracedEndsInSymbol wire with
+            match getRetracedIntoSymbol wire with
             | Some list -> list 
             | None -> [])
         |> (function
@@ -412,5 +412,5 @@ let getRetracedSegments (model: SheetT.Model) =
         
 
     {| allRetracedSegments = allRetracedSegments; 
-       allRetracedEndSegmentsInSymbol = allRetracedEndsInSymbol |}
+       allSegmentsRetracedIntoSymbol = allRetracedIntoSymbol |}
 
