@@ -125,18 +125,38 @@ module D3Testing =
     let portOf (label:string) (number: int) =
         {Label=label; PortNumber = number}
 
+    type simpleSymbol = {
+        symLabel : string
+        compType : ComponentType
+        position: XYPos
+        sTransform: STransform
+    }
+
+    /// <summary>
+    /// Get a list of simple symbols from a sheet model.
+    /// </summary>
+    /// <param name="model">The sheet model.</param>
+    /// <returns>A list of simple symbols.</returns>
+    let getSimSymbolList (model: SheetT.Model) : List<simpleSymbol> =
+        let symbols = Optic.get SheetT.symbols_ model
+                      |> mapValues
+                      |> Array.toList
+
+        let extractValues (label: string) (symbol: SymbolT.Symbol) : simpleSymbol= 
+            { symLabel = label 
+              compType = symbol.Component.Type
+              position = symbol.Pos
+              sTransform = symbol.STransform }
+
+        symbols
+        |> List.mapi (fun index symbol -> 
+                extractValues (string index) symbol)
 
 //------------------------------------------------------------------------------------------------------------------------//
 //------------------------------functions to build issue schematics programmatically--------------------------------------//
 //------------------------------------------------------------------------------------------------------------------------//
     module Builder =
 
-        type simpleSymbol = {
-            symLabel : string
-            compType : ComponentType
-            position: XYPos
-            sTransform: STransform
-        }
 
         /// <summary>
         /// Output a sheet model with a simpleSymbol added to it.
@@ -174,8 +194,7 @@ module D3Testing =
                     | Ok model -> model
                     | Error e -> curModel) // Failed to draw symbol so pass previous model
             
-        
-
+            
 
         /// Place a new symbol with label symLabel onto the Sheet with given position.
         /// Return error if symLabel is not unique on sheet, or if position is outside allowed sheet coordinates (0 - maxSheetCoord).
