@@ -87,7 +87,7 @@ let setSybolPosition =
 
 // B3
 /// <summary>Create lens between symbol and the order of ports</summary>
-let symbolPortOrder_ edge: Lens<SymbolT.Symbol, string list> =
+let symbolPortOrderOnEdge_ edge: Lens<SymbolT.Symbol, string list> =
   let getSymbolPortOrder (symbol: SymbolT.Symbol) =
     let symbolInfo_ = SymbolT.portMaps_ >-> SymbolT.order_
     
@@ -355,9 +355,9 @@ let visibleWireIntersections (sheet: SheetT.Model): int =
 /// share either a start or end point, then the lengths will be double counted.</remarks>
 /// <param name="sheet">The sheet with the wires where right angles will be counted</param>
 /// <returns>An integer representing the number of visible right angles in wiring for this sheet</returns>
-let totalVisibleWireLength (sheet: SheetT.Model) =
+let totalVisibleWireLength (wModel: BusWireT.Model) =
   let netlist = 
-    sheet.Wire.Wires
+    wModel.Wires
     |> Helpers.mapValues
     |> Seq.toList
     |> List.groupBy (fun wire -> wire.OutputPort)
@@ -444,4 +444,7 @@ let visibleWireRightAngles (sheet: SheetT.Model) =
   ) 
   |> List.fold (+) 0
 
-/// TODO T6
+// TODO T6
+// 
+// Well, I spent far too long trying to get the above to work well (shouldn't have tested them :( ) and now
+// I no longer have time to try T6.

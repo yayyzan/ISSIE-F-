@@ -20,6 +20,7 @@ open Fable.Core.JsInterop
 open BuildUartHelpers
 open Node
 open SheetBeautifyHelpers
+open SheetBeautifyD3
 
 module node = Node.Api
 
@@ -305,6 +306,9 @@ let update (msg : Msg) (issieModel : ModelType.Model): ModelType.Model*Cmd<Model
                     sheetCmd (KeyPress CtrlA)
                 elif containsKey "W" newPressedKeys then
                     sheetCmd (KeyPress CtrlW)
+                elif containsKey "B" newPressedKeys then
+                    beautifyD3 model
+                    sheetCmd (KeyPress CtrlB)
                 else
                     Cmd.none
             | false -> Cmd.none
