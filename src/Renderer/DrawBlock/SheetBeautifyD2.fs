@@ -8,7 +8,7 @@ module TestD2
     Functions included are: 
     - randomRotation: returns a random rotation for a symbol
     - randomFlipType: returns a random flip type for a symbol
-    - shufflePortMapsOrder: shuffles the order of ports on each edge of a component's port maps
+    - shufflePortMapsOrder: shuffles the order of ports on relevant edge of a component's port maps
     - updateMux2PortOrder: updates the order of ports for all Mux2 type symbols in a model, shuffling the port orders
     - checkWireCrossing: checks if two wire segments intersect by evaluating their horizontal and vertical overlap
     - countCrossingsInSheet: counts the number of wire crossings in a given sheet and reports if any are found

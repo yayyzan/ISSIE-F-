@@ -419,7 +419,8 @@ let sumOfUniqueVisibleSegmentLengths (model: SheetT.Model) : float =
 
     let groupedSegmentsByNetAndVector =
         allVisibleSegmentsWithInputPort
-        |> List.groupBy fst // Group by InputPortId
+        // Group by InputPortId
+        |> List.groupBy fst 
         |> List.collect (fun (_, segments) -> segments |> List.groupBy snd |> List.map snd)
 
     let uniqueSegmentLengths =
@@ -493,16 +494,17 @@ let identifyRetracingSegmentsAndEnds (sheet: SheetT.Model) : BusWireT.ASegment l
     sheet.Wire.Wires
     |> Map.fold
         (fun acc _ wire ->
-            let absSegments = getNonZeroAbsSegments wire
+            let absSegments = getAbsSegments wire
             let processSegment i (seg: BusWireT.ASegment) =
+                let isHorizontal (seg: BusWireT.ASegment) = seg.Orientation = BusWireT.Orientation.Horizontal
+                let isVertical (seg: BusWireT.ASegment) = seg.Orientation = BusWireT.Orientation.Vertical
                 let isRetracing =
-                    i > 0
-                    && i < List.length absSegments - 1
-                    && let prevSeg = absSegments.[i - 1] in
-                       let nextSeg = absSegments.[i + 1] in
-
-                       prevSeg.Segment.Length * nextSeg.Segment.Length < 0.0
-                       && seg.Segment.Length = 0.0
+                    if i > i && i < List.length absSegments - 1 && seg.Segment.Length = 0.0 then
+                       let prevSeg = absSegments.[i - 1]
+                       let nextSeg = absSegments.[i + 1]
+                       // Check if the direction changes from horizontal to vertical or vice versa
+                       (isHorizontal prevSeg && isVertical nextSeg) || (isVertical prevSeg && isHorizontal nextSeg)
+                    else false
 
                 let isEndRetracing =
                     (i = 0 || i = List.length absSegments - 1)
