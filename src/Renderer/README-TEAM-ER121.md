@@ -1,6 +1,6 @@
-## TestD2 Module Overview
+## D2T Module Overview
 
-The `TestD2` module in `TestDrawBlockD2.fs` enhances circuit layout testing by introducing randomness in gate and MUX orientations and input connections. This approach aims to simulate a variety of manually generated test circuits layout scenarios to evaluate the effectiveness of wire routing algorithms. Key functionalities include:
+The `D2T` module in `TestDrawBlockD2.fs` enhances circuit layout testing by introducing randomness in gate and MUX orientations and input connections. This approach aims to simulate a variety of manually generated test circuits layout scenarios to evaluate the effectiveness of wire routing algorithms. Key functionalities include:
 
 - **Randomizing Symbol Orientations**: Utilizes `randomRotation` and `randomFlipType` to randomly rotate and flip gates and MUXes, mimicking diverse circuit configurations.
 - **Shuffling MUX Inputs**: The `shufflePortMapsOrder` and `updateMux2PortOrder` functions randomly swap inputs on 2-MUX symbols, testing the routing adaptability to changes in input connections.
