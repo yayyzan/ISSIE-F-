@@ -26,6 +26,7 @@ let visibleSegments (wire : BusWireT.Wire): (XYPos * XYPos) list =
 
     let tryCoalesceAboutIndex ((remainingSegs : ASegment List, coalescedSegs : (XYPos * XYPos) list)) (_)  =
         match remainingSegs with
+        | prev::z1::next::z2::tail when z1.IsZero && z2.IsZero -> ([{prev with End=next.End};z2] @ tail, coalescedSegs)
         | prev::curr::next::tail -> 
             if curr.IsZero
             then 
@@ -228,7 +229,7 @@ type IntresectionType =
 /// If a TJunction is found within segments belonging to the same net it is ignored.
 /// </para>
 /// </remarks>
-let countVisibleRightAngleSegmentIntersection ( sheet : SheetT.Model) = 
+let countVisibleSegmentIntersection ( sheet : SheetT.Model) = 
     // get a list of segments which intersect at right angles
     // for each segment obtain asbolute start and end position
     // check orthogonality by checking each distinct segment pair to ensure they have opposite orientation and are within range of each other
@@ -355,22 +356,59 @@ let wireSegmentLength (sheet : SheetT.Model) =
     |> List.map getNonOverlappedWireLength
     |> List.reduce (+)
 
+/// <summary>
+/// Enumerates the possible directions of a given segment: Up, Down, Right, and Left.
+/// </summary>
+type DirectionType = 
+    | Up
+    | Down
+    | Right
+    | Left
+
+/// <summary>
+/// Determines the direction of a line segment based on its start and end positions.
+/// </summary>
+/// <param name="startPos">The starting position of the line segment.</param>
+/// <param name="endPos">The ending position of the line segment.</param>
+/// <returns>The direction of the line segment.</returns>
+let segDirection (startPos : XYPos, endPos : XYPos ) : DirectionType = 
+    if startPos.X = endPos.X
+    then 
+        if startPos.Y < endPos.Y
+        then Up
+        else Down
+    else 
+        if startPos.X < endPos.X
+        then Right
+        else Left
+
+// T5R
 // function 13 : Number of visible wire right-angles. Count over whole sheet.
 /// <summary>
 /// Counts the number of visible right angles in a given sheet.
 /// </summary>
 /// <param name="sheet">The sheet containing wires.</param>
 /// <returns>The total count of visible right angles in the sheet.</returns>
-// TODO FIX THIS BY LOOKING AT ALL VERTICES AND COUNTING THE UNIQUE ONES
-let countVisibleRightAnglesT5R ( sheet : SheetT.Model) =
+let countVisibleRightAngles ( sheet : SheetT.Model) =
+    /// given a pair of adjacent segments in the form of start and end position returns the vertex they share and the direction of each segment
+    let vertexAndDirection (segL : (XYPos*XYPos) list)  =
+        let (seg1, seg2) = segL.Head , segL.Tail.Head
+        (snd seg1, (segDirection seg1, segDirection seg2))
+
     sheet.Wire.Wires
     |> Map.values
-    |> Seq.map (fun wire -> 
-        visibleSegments wire 
-        |> List.length 
-        |> (fun res -> res / 2))
-        // there as many right angles as half the number of visible segments
-    |> Seq.reduce (+)
+    |> Seq.toList
+    |> List.collect (fun wire -> 
+        visibleSegments wire
+        |> List.windowed 2
+        |> List.map vertexAndDirection)
+    |> List.distinctBy (fun (intersectPos, (dir1,dir2)) ->
+        // force order of segment directions to have vertical directions first and horizontal second
+        match dir1 with
+        | Up | Down -> (intersectPos, (dir1,dir2))
+        | Right | Left -> (intersectPos, (dir2,dir1))
+    )
+    |> List.length 
 
 // function 14 : 
 // The zero-length segments in a wire with non-zero segments on either side that have 
