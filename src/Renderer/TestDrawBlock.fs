@@ -359,9 +359,8 @@ module HLPTick3 =
                 None
 
         /// Fails all tests: useful to show in sequence all the sheets generated in a test
-        let failOnAllTests (sample: int) (sheet: SheetT.Model) =
-            // Some <| $"Sample {sample}"
-            Some <| $"{T3R sheet}"
+        let failOnAllTests (sample: int) _ =
+            Some <| $"Sample {sample}"
 
         /// Fail when sheet contains a wire segment that overlaps (or goes too close to) a symbol outline  
         let failOnWireIntersectsSymbol (sample: int) (sheet: SheetT.Model) =

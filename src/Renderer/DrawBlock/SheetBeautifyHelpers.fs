@@ -140,24 +140,16 @@ let symbolInputFlipped: Lens<SymbolT.Symbol, bool> =
 // B5R
 // B5R is inside the function so that the principal function can be made to return
 // a lens if so desired. This would be achieved by designing a getter function.
-/// <summary></summary>
-let getPortSheetPosition =
+/// <summary>Get the position of a port on a sheet.</summary>
+let getPortSheetPosition (sheet: SheetT.Model) (port: Port)=
   let model_ = SheetT.wire_ >-> BusWireT.symbol_
-
-  let B5R (sheet: SheetT.Model) (port: Port) =
-    getPortLocation None (Optic.get model_ sheet) port.Id
-  B5R
+  getPortLocation None (Optic.get model_ sheet) port.Id
 
 // B6R
-/// <summary>Create lens from Symbol to rotation state of a symbol</summary>
-let B6 =
+/// <summary>Get the bounding box of a symbol on a sheet.</summary>
+let getSymbolBoundingBox (sheet: SheetT.Model) (symbol: SymbolT.Symbol) =
   let model_ = SheetT.wire_ >-> BusWireT.symbol_
-
-  let B6R (sheet: SheetT.Model) (symbol: SymbolT.Symbol) =
-    getBoundingBox (Optic.get model_ sheet) symbol.Id
-    // getBoundingBox sheet symbol.Id // alternative without lens
-
-  B6R, ()
+  getBoundingBox (Optic.get model_ sheet) symbol.Id
 
 // B7
 /// <summary>Create lens from Symbol to rotation state of a symbol</summary>
@@ -265,6 +257,7 @@ let countVisibleSegmentsIntersectingSymbols (sheet: SheetT.Model) =
     vSeg
     |> List.scan (+) thisWire.StartPos
     // We need to remove the first and last segments because they can potentially touch the bounding boxes of the symbols they connect
+    // Not sure what the best way to implement this could be, but it works for now
     |> List.tail
     |> List.rev
     |> List.tail
