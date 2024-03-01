@@ -216,6 +216,7 @@ type IntresectionType =
 // function 11 : The number of distinct pairs of segments that cross each other at right angles. 
 // Does not include 0 length segments or segments on same net intersecting at one end, or segments on same net on top of each other. Count over whole sheet.
 // T3R
+// This function was tested by running it in issie and visually inspecting behaviour at various corner cases
 /// <summary>
 /// Counts the number of distinct wire segments that intersect orthogonally on a sheet.
 /// </summary>
@@ -285,6 +286,7 @@ let countVisibleSegmentIntersection ( sheet : SheetT.Model) =
 
 
 // T4R
+// This function was tested by running it in issie and visually inspecting behaviour at various corner cases
 /// <summary>
 /// Calculates the total length of wiring segments on a sheet, counting only one when there are multiple segments overlapping within the same net.
 /// </summary>
@@ -383,6 +385,7 @@ let segDirection (startPos : XYPos, endPos : XYPos ) : DirectionType =
         else Left
 
 // T5R
+// This function was tested by running it in issie and visually inspecting behaviour at various corner cases
 // function 13 : Number of visible wire right-angles. Count over whole sheet.
 /// <summary>
 /// Counts the number of visible right angles in a given sheet.
