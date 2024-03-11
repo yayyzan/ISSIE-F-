@@ -126,15 +126,15 @@ module D3Testing =
         {Label=label; PortNumber = number}
 
     type SimpleSymbol = {
-        symLabel : string
-        compType : ComponentType
-        position: XYPos
-        sTransform: STransform
+        SymLabel : string
+        CompType : ComponentType
+        Position: XYPos
+        STransform: STransform
     }
 
     type SimpleConnection = {
-        source: SymbolPort
-        target: SymbolPort
+        Source: SymbolPort
+        Target: SymbolPort
     }
 
     type TestModel = {
@@ -154,10 +154,10 @@ module D3Testing =
     //                   |> Array.toList
 
     //     let extractValues (label: string) (symbol: SymbolT.Symbol) : SimpleSymbol= 
-    //         { symLabel = label 
-    //           compType = symbol.Component.Type
-    //           position = symbol.Pos
-    //           sTransform = symbol.STransform }
+    //         { SymLabel = label 
+    //           CompType = symbol.Component.Type
+    //           Position = symbol.Pos
+    //           STransform = symbol.STransform }
 
     //     symbols
     //     |> List.mapi (fun index symbol -> 
@@ -166,10 +166,10 @@ module D3Testing =
 
     let getSimSymbolMap (model: SheetT.Model) : Map<ComponentId, SimpleSymbol> = 
         let extractValues (label: string) (symbol: SymbolT.Symbol) : SimpleSymbol= 
-            { symLabel = label 
-              compType = symbol.Component.Type
-              position = symbol.Pos
-              sTransform = symbol.STransform }
+            { SymLabel = label 
+              CompType = symbol.Component.Type
+              Position = symbol.Pos
+              STransform = symbol.STransform }
 
         Optic.get SheetT.symbols_ model
         |> Map.toList
@@ -182,11 +182,11 @@ module D3Testing =
         let getSymLabel (hostId: ComponentId) =
             symbolMap
             |> Map.find hostId
-            |> fun sym -> sym.symLabel
+            |> fun sym -> sym.SymLabel
             
         let getPortIndex (port: Port) (portList: List<Port>) = 
             portList
-            |> List.findIndex (fun elm -> elm = port)
+            |> List.findIndex (fun elm -> port.HostId = elm.HostId)
         
         let getSymbolPort (portType: PortType) (port: Port) =
             let compId = ComponentId port.HostId
@@ -202,8 +202,8 @@ module D3Testing =
 
         BusWire.extractConnections model.Wire
         |> List.map (fun conn ->
-             { source = getSymbolPort PortType.Output conn.Source
-               target = getSymbolPort PortType.Input conn.Target })
+             { Source = getSymbolPort PortType.Output conn.Source
+               Target = getSymbolPort PortType.Input conn.Target })
     
     
     let getTestModel (model: SheetT.Model) = 
@@ -224,17 +224,17 @@ module D3Testing =
         /// <param name="model">The Sheet model into which the new symbol is added.</param>
         /// <param name="simSymbol">The SimpleSymbol to be added to the model.</param>
         let placeSimpleSymbol (model: SheetT.Model) (simSymbol: SimpleSymbol) : Result<SheetT.Model, string> =
-            let symLabel = String.toUpper simSymbol.symLabel // make label into its standard casing
-            let symModel, symId = SymbolUpdate.addSymbol [] (model.Wire.Symbol) simSymbol.position simSymbol.compType symLabel
+            let symLabel = String.toUpper simSymbol.SymLabel // make label into its standard casing
+            let symModel, symId = SymbolUpdate.addSymbol [] (model.Wire.Symbol) simSymbol.Position simSymbol.CompType symLabel
             let sym = symModel.Symbols[symId]
-                      |> Optic.set symbol_rotation_ simSymbol.sTransform.Rotation
-                      |> Optic.set symbol_flipped_ simSymbol.sTransform.Flipped
+                      |> Optic.set symbol_rotation_ simSymbol.STransform.Rotation
+                      |> Optic.set symbol_flipped_ simSymbol.STransform.Flipped
 
             let symModel' = Optic.set (SymbolT.symbolOf_ symId) sym symModel
             
-            match simSymbol.position + sym.getScaledDiagonal with
+            match simSymbol.Position + sym.getScaledDiagonal with
             | {X=x;Y=y} when x > maxSheetCoord || y > maxSheetCoord ->
-                Error $"symbol '{symLabel}' position {simSymbol.position + sym.getScaledDiagonal} lies outside allowed coordinates"
+                Error $"symbol '{symLabel}' position {simSymbol.Position + sym.getScaledDiagonal} lies outside allowed coordinates"
             | _ ->
                 model
                 |> Optic.set symbolModel_ symModel'
@@ -745,6 +745,10 @@ module D3Testing =
                 ()
             | _ ->
                 func testIndex 0 dispatch
+        
+        let testModelGen (model: Model) (dispatch: Dispatch<Msg>) =
+            printfn $"{getTestModel model.Sheet}"
+            ()
         
 
 
