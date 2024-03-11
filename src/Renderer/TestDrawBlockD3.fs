@@ -125,32 +125,92 @@ module D3Testing =
     let portOf (label:string) (number: int) =
         {Label=label; PortNumber = number}
 
-    type simpleSymbol = {
+    type SimpleSymbol = {
         symLabel : string
         compType : ComponentType
         position: XYPos
         sTransform: STransform
     }
 
-    /// <summary>
-    /// Get a list of simple symbols from a sheet model.
-    /// </summary>
-    /// <param name="model">The sheet model.</param>
-    /// <returns>A list of simple symbols.</returns>
-    let getSimSymbolList (model: SheetT.Model) : List<simpleSymbol> =
-        let symbols = Optic.get SheetT.symbols_ model
-                      |> mapValues
-                      |> Array.toList
+    type SimpleConnection = {
+        source: SymbolPort
+        target: SymbolPort
+    }
 
-        let extractValues (label: string) (symbol: SymbolT.Symbol) : simpleSymbol= 
+    type TestModel = {
+        SimpleSymbols : SimpleSymbol List
+        Connections : SimpleConnection List
+    }
+    
+
+    // /// <summary>
+    // /// Get a list of simple symbols from a sheet model.
+    // /// </summary>
+    // /// <param name="model">The sheet model.</param>
+    // /// <returns>A list of simple symbols.</returns>
+    // let getSimSymbolList (model: SheetT.Model) : List<SimpleSymbol> =
+    //     let symbols = Optic.get SheetT.symbols_ model
+    //                   |> mapValues
+    //                   |> Array.toList
+
+    //     let extractValues (label: string) (symbol: SymbolT.Symbol) : SimpleSymbol= 
+    //         { symLabel = label 
+    //           compType = symbol.Component.Type
+    //           position = symbol.Pos
+    //           sTransform = symbol.STransform }
+
+    //     symbols
+    //     |> List.mapi (fun index symbol -> 
+    //             extractValues (string index) symbol)
+
+
+    let getSimSymbolMap (model: SheetT.Model) : Map<ComponentId, SimpleSymbol> = 
+        let extractValues (label: string) (symbol: SymbolT.Symbol) : SimpleSymbol= 
             { symLabel = label 
               compType = symbol.Component.Type
               position = symbol.Pos
               sTransform = symbol.STransform }
 
-        symbols
-        |> List.mapi (fun index symbol -> 
-                extractValues (string index) symbol)
+        Optic.get SheetT.symbols_ model
+        |> Map.toList
+        |> List.mapi (fun index symbolMap -> 
+                (fst symbolMap, extractValues ("Symbol" + string index) (snd symbolMap)))
+        |> Map.ofList
+    
+
+    let getSimpleConnections (model: SheetT.Model) (symbolMap: Map<ComponentId, SimpleSymbol>) = 
+        let getSymLabel (hostId: ComponentId) =
+            symbolMap
+            |> Map.find hostId
+            |> fun sym -> sym.symLabel
+            
+        let getPortIndex (port: Port) (portList: List<Port>) = 
+            portList
+            |> List.findIndex (fun elm -> elm = port)
+        
+        let getSymbolPort (portType: PortType) (port: Port) =
+            let compId = ComponentId port.HostId
+            let Symbol = Optic.get (SheetT.symbolOf_ compId) model
+
+            let portNum = 
+                match portType with
+                    | PortType.Input -> getPortIndex port Symbol.Component.InputPorts
+                    | PortType.Output -> getPortIndex port Symbol.Component.OutputPorts
+
+            { Label = getSymLabel compId
+              PortNumber = portNum }
+
+        BusWire.extractConnections model.Wire
+        |> List.map (fun conn ->
+             { source = getSymbolPort PortType.Output conn.Source
+               target = getSymbolPort PortType.Input conn.Target })
+    
+    
+    let getTestModel (model: SheetT.Model) = 
+        let simpleSymbolMap = getSimSymbolMap model
+
+        { SimpleSymbols = Map.values simpleSymbolMap |> Array.toList
+          Connections = getSimpleConnections model simpleSymbolMap  }
 
 //------------------------------------------------------------------------------------------------------------------------//
 //------------------------------functions to build issue schematics programmatically--------------------------------------//
@@ -159,11 +219,11 @@ module D3Testing =
 
 
         /// <summary>
-        /// Output a sheet model with a simpleSymbol added to it.
+        /// Output a sheet model with a SimpleSymbol added to it.
         /// </summary>
         /// <param name="model">The Sheet model into which the new symbol is added.</param>
-        /// <param name="simSymbol">The simpleSymbol to be added to the model.</param>
-        let placeSimpleSymbol (model: SheetT.Model) (simSymbol: simpleSymbol) : Result<SheetT.Model, string> =
+        /// <param name="simSymbol">The SimpleSymbol to be added to the model.</param>
+        let placeSimpleSymbol (model: SheetT.Model) (simSymbol: SimpleSymbol) : Result<SheetT.Model, string> =
             let symLabel = String.toUpper simSymbol.symLabel // make label into its standard casing
             let symModel, symId = SymbolUpdate.addSymbol [] (model.Wire.Symbol) simSymbol.position simSymbol.compType symLabel
             let sym = symModel.Symbols[symId]
@@ -186,8 +246,8 @@ module D3Testing =
         /// Fold over a list of simple symbols and output a sheet model with all of them added.
         /// </summary>
         /// <param name="model">The Sheet model into which the new symbols are added.</param>
-        /// <param name="simSymbolList">The list of simpleSymbols to be added to the model.</param>
-        let placeSimSymbolList (model: SheetT.Model) (simSymbolList: List<simpleSymbol>) = 
+        /// <param name="simSymbolList">The list of SimpleSymbols to be added to the model.</param>
+        let placeSimSymbolList (model: SheetT.Model) (simSymbolList: List<SimpleSymbol>) = 
             (model,simSymbolList)
             ||> List.fold (fun curModel curSimSymbol ->
                     match placeSimpleSymbol curModel curSimSymbol with
