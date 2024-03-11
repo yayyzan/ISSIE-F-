@@ -112,7 +112,34 @@ module D3Testing =
     /// Used throughout to compare labels since these are case invariant "g1" = "G1"
     let caseInvariantEqual str1 str2 =
         String.toUpper str1 = String.toUpper str2
- 
+    
+    let inline invertRot (rot: Rotation) =
+        match rot with
+        | Degree0 -> Degree0
+        | Degree180 -> Degree180
+        | Degree90 -> Degree270
+        | Degree270 -> Degree90
+    
+
+    let flipPortMaps (sym: SymbolT.Symbol) : SymbolT.PortMaps = 
+        let portOrientation = 
+            sym.PortMaps.Orientation |> Map.map (fun id side -> SymbolResizeHelpers.flipSideHorizontal side)
+
+        let flipPortList currPortOrder side =
+            currPortOrder |> Map.add (SymbolResizeHelpers.flipSideHorizontal side ) sym.PortMaps.Order[side]
+
+        let portOrder = 
+            (Map.empty, [Top; Left; Bottom; Right]) ||> List.fold flipPortList
+            |> Map.map (fun edge order -> List.rev order)  
+
+        {Order=portOrder;Orientation=portOrientation}   
+
+
+    let getFirstPartBeforeWhiteSpace (input: string) =
+        match input.Split([|' '|]) with
+        | [|firstPart|] -> firstPart
+        | _ -> input // Handle the case where there's no whitespace
+        
 
     /// Identify a port from its component label and number.
     /// Usually both an input and output port will mathc this, so
@@ -142,39 +169,24 @@ module D3Testing =
         Connections : SimpleConnection List
     }
     
-
-    // /// <summary>
-    // /// Get a list of simple symbols from a sheet model.
-    // /// </summary>
-    // /// <param name="model">The sheet model.</param>
-    // /// <returns>A list of simple symbols.</returns>
-    // let getSimSymbolList (model: SheetT.Model) : List<SimpleSymbol> =
-    //     let symbols = Optic.get SheetT.symbols_ model
-    //                   |> mapValues
-    //                   |> Array.toList
-
-    //     let extractValues (label: string) (symbol: SymbolT.Symbol) : SimpleSymbol= 
-    //         { SymLabel = label 
-    //           CompType = symbol.Component.Type
-    //           Position = symbol.Pos
-    //           STransform = symbol.STransform }
-
-    //     symbols
-    //     |> List.mapi (fun index symbol -> 
-    //             extractValues (string index) symbol)
+    let getShortSymbolName (sym: SymbolT.Symbol) =
+        sym.Component.Type
+        |> string 
+        |> getFirstPartBeforeWhiteSpace 
 
 
     let getSimSymbolMap (model: SheetT.Model) : Map<ComponentId, SimpleSymbol> = 
         let extractValues (label: string) (symbol: SymbolT.Symbol) : SimpleSymbol= 
             { SymLabel = label 
               CompType = symbol.Component.Type
-              Position = symbol.Pos
+              Position = { X = symbol.Pos.X + float symbol.Component.W / 2.0; Y = symbol.Pos.Y + float symbol.Component.H / 2.0 }
               STransform = symbol.STransform }
 
         Optic.get SheetT.symbols_ model
         |> Map.toList
-        |> List.mapi (fun index symbolMap -> 
-                (fst symbolMap, extractValues ("Symbol" + string index) (snd symbolMap)))
+        |> List.mapi (fun index symbolMap -> // have access to index here so can add to symLabel if desired
+                let symbol = snd symbolMap
+                (fst symbolMap, extractValues (symbol.Component.Label) symbol))
         |> Map.ofList
     
 
@@ -186,7 +198,7 @@ module D3Testing =
             
         let getPortIndex (port: Port) (portList: List<Port>) = 
             portList
-            |> List.findIndex (fun elm -> port.HostId = elm.HostId)
+            |> List.findIndex (fun elm -> port.Id = elm.Id)
         
         let getSymbolPort (portType: PortType) (port: Port) =
             let compId = ComponentId port.HostId
@@ -217,22 +229,41 @@ module D3Testing =
 //------------------------------------------------------------------------------------------------------------------------//
     module Builder =
 
-
         /// <summary>
         /// Output a sheet model with a SimpleSymbol added to it.
         /// </summary>
         /// <param name="model">The Sheet model into which the new symbol is added.</param>
         /// <param name="simSymbol">The SimpleSymbol to be added to the model.</param>
-        let placeSimpleSymbol (model: SheetT.Model) (simSymbol: SimpleSymbol) : Result<SheetT.Model, string> =
+        let placeSimpleSymbol (simSymbol: SimpleSymbol) (model: SheetT.Model) : Result<SheetT.Model, string> =
             let symLabel = String.toUpper simSymbol.SymLabel // make label into its standard casing
             let symModel, symId = SymbolUpdate.addSymbol [] (model.Wire.Symbol) simSymbol.Position simSymbol.CompType symLabel
             let sym = symModel.Symbols[symId]
-                      |> Optic.set symbol_rotation_ simSymbol.STransform.Rotation
-                      |> Optic.set symbol_flipped_ simSymbol.STransform.Flipped
 
-            let symModel' = Optic.set (SymbolT.symbolOf_ symId) sym symModel
+            let portMaps' = 
+                if simSymbol.STransform.Flipped 
+                then
+                    flipPortMaps sym
+                    |> SymbolResizeHelpers.rotatePortInfo simSymbol.STransform.Rotation
+                else
+                    SymbolResizeHelpers.rotatePortInfo simSymbol.STransform.Rotation sym.PortMaps
             
-            match simSymbol.Position + sym.getScaledDiagonal with
+            let sym' = sym
+                      |> Optic.set symbol_flipped_ simSymbol.STransform.Flipped
+                      |> Optic.set symbol_rotation_ simSymbol.STransform.Rotation
+                      |> Optic.set SymbolT.portMaps_ portMaps'
+                    //   |> SymbolResizeHelpers.rotateSymbol simSymbol.STransform.Rotation
+                    //   |> updateSymPos simSymbol.Position // little trick to fix position shift with mux rotation
+                      
+           
+           
+            // let portMaps' = SymbolResizeHelpers.rotatePortInfo simSymbol.STransform.Rotation sym.PortMaps
+            //                 |> Optic.set SymbolT.portMaps_ 
+
+        //    //rotatePortInfo rotation sym.PortMaps
+
+            let symModel' = Optic.set (SymbolT.symbolOf_ symId) sym' symModel
+            
+            match simSymbol.Position with
             | {X=x;Y=y} when x > maxSheetCoord || y > maxSheetCoord ->
                 Error $"symbol '{symLabel}' position {simSymbol.Position + sym.getScaledDiagonal} lies outside allowed coordinates"
             | _ ->
@@ -242,19 +273,69 @@ module D3Testing =
                 |> Ok
         
 
+        /// Add a (newly routed) wire, source specifies the Output port, target the Input port.
+        /// Return an error if either of the two ports specified is invalid, or if the wire duplicates and existing one.
+        /// The wire created will be smart routed but not separated from other wires: for a nice schematic
+        /// separateAllWires should be run after  all wires are added.
+        /// source, target: respectively the output port and input port to which the wire connects.
+        let placeWire (source: SymbolPort) (target: SymbolPort) (model: SheetT.Model) : Result<SheetT.Model,string> =
+            let symbols = model.Wire.Symbol.Symbols
+            let getPortId (portType:PortType) symPort =
+                mapValues symbols
+                |> Array.tryFind (fun sym -> caseInvariantEqual sym.Component.Label symPort.Label)
+                |> function | Some x -> Ok x | None -> Error "Can't find symbol with label '{symPort.Label}'"
+                |> Result.bind (fun sym ->
+                    match portType with
+                    | PortType.Input -> List.tryItem symPort.PortNumber sym.Component.InputPorts
+                    | PortType.Output -> List.tryItem symPort.PortNumber sym.Component.OutputPorts
+                    |> function | Some port -> Ok port.Id
+                                | None -> Error $"Can't find {portType} port {symPort.PortNumber} on component {symPort.Label}")
+            
+            match getPortId PortType.Input target, getPortId PortType.Output source with
+            | Error e, _ | _, Error e -> Error e
+            | Ok inPort, Ok outPort ->
+                let newWire = BusWireUpdate.makeNewWire (InputPortId inPort) (OutputPortId outPort) model.Wire
+                if model.Wire.Wires |> Map.exists (fun wid wire -> wire.InputPort=newWire.InputPort && wire.OutputPort = newWire.OutputPort) then
+                        // wire already exists
+                        Error "Can't create wire from {source} to {target} because a wire already exists between those ports"
+                else
+
+                     model
+                     |> Optic.set (busWireModel_ >-> BusWireT.wireOf_ newWire.WId) newWire
+                     |> Optic.map busWireModel_ (BusWireSeparate.updateWireSegmentJumpsAndSeparations [newWire.WId])  
+                     |> Ok
+
+
         /// <summary>
         /// Fold over a list of simple symbols and output a sheet model with all of them added.
         /// </summary>
         /// <param name="model">The Sheet model into which the new symbols are added.</param>
         /// <param name="simSymbolList">The list of SimpleSymbols to be added to the model.</param>
-        let placeSimSymbolList (model: SheetT.Model) (simSymbolList: List<SimpleSymbol>) = 
-            (model,simSymbolList)
-            ||> List.fold (fun curModel curSimSymbol ->
-                    match placeSimpleSymbol curModel curSimSymbol with
-                    | Ok model -> model
-                    | Error e -> curModel) // Failed to draw symbol so pass previous model
+        let placeSimSymbolList (simSymbolList: List<SimpleSymbol>) (model: SheetT.Model) = 
+            (Ok model,simSymbolList)
+            ||> List.fold (fun curModel curSimSymbol -> Result.bind (placeSimpleSymbol curSimSymbol) curModel)
+                    // match placeSimpleSymbol curModel curSimSymbol with
+                    // | Ok model -> model
+                    // | Error e -> curModel) // Failed to draw symbol so pass previous model
             
-            
+
+        let placeConnections (conns: List<SimpleConnection>) (model: SheetT.Model) =
+            (Ok model,conns)
+            ||> List.fold (fun curModel curConn -> Result.bind (placeWire curConn.Source curConn.Target) curModel) 
+        
+
+        /// Run the global wire separation algorithm (should be after all wires have been placed and routed)
+        let separateAllWires (model: SheetT.Model) : SheetT.Model =
+            model
+            |> Optic.map busWireModel_ (BusWireSeparate.updateWireSegmentJumpsAndSeparations (model.Wire.Wires.Keys |> Seq.toList))
+
+        let placeTestModel (testModel: TestModel) = 
+            initSheetModel
+            |> placeSimSymbolList testModel.SimpleSymbols
+            |> Result.bind (placeConnections testModel.Connections)
+            |> Result.map separateAllWires
+            |> getOkOrFail
+      
 
         /// Place a new symbol with label symLabel onto the Sheet with given position.
         /// Return error if symLabel is not unique on sheet, or if position is outside allowed sheet coordinates (0 - maxSheetCoord).
@@ -277,8 +358,6 @@ module D3Testing =
                 |> Ok
         
 
-
-    
         /// Place a new symbol onto the Sheet with given position and scaling (use default scale if this is not specified).
         /// The ports on the new symbol will be determined by the input and output components on some existing sheet in project.
         /// Return error if symLabel is not unique on sheet, or ccSheetName is not the name of some other sheet in project.
@@ -310,7 +389,6 @@ module D3Testing =
                 placeSymbol symLabel (Custom ccType) position model
             
         
-
         // Rotate a symbol
         let rotateSymbol (symLabel: string) (rotate: Rotation) (model: SheetT.Model) : (Result<SheetT.Model,string>) =
             let symbolMap = model.Wire.Symbol.Symbols
@@ -331,11 +409,7 @@ module D3Testing =
             model
             |> Optic.set SheetT.symbols_ updatedSymbolMap
             |> Ok 
-            
-            
-        // let rotateSymbolResult (symLabel: string) (rotate: Rotation) (model: SheetT.Model) =
-        //     rotateSymbol
-        //     |> function | Some x -> Ok x | None -> Error "Can"
+        
 
         // Flip a symbol
         let flipSymbol (symLabel: string) (flip: SymbolT.FlipType) (model: SheetT.Model) : (Result<SheetT.Model,string>) =
@@ -357,44 +431,7 @@ module D3Testing =
             model
             |> Optic.set SheetT.symbols_ updatedSymbolMap
             |> Ok 
-
-
-
-        /// Add a (newly routed) wire, source specifies the Output port, target the Input port.
-        /// Return an error if either of the two ports specified is invalid, or if the wire duplicates and existing one.
-        /// The wire created will be smart routed but not separated from other wires: for a nice schematic
-        /// separateAllWires should be run after  all wires are added.
-        /// source, target: respectively the output port and input port to which the wire connects.
-        let placeWire (source: SymbolPort) (target: SymbolPort) (model: SheetT.Model) : Result<SheetT.Model,string> =
-            let symbols = model.Wire.Symbol.Symbols
-            let getPortId (portType:PortType) symPort =
-                mapValues symbols
-                |> Array.tryFind (fun sym -> caseInvariantEqual sym.Component.Label symPort.Label)
-                |> function | Some x -> Ok x | None -> Error "Can't find symbol with label '{symPort.Label}'"
-                |> Result.bind (fun sym ->
-                    match portType with
-                    | PortType.Input -> List.tryItem symPort.PortNumber sym.Component.InputPorts
-                    | PortType.Output -> List.tryItem symPort.PortNumber sym.Component.OutputPorts
-                    |> function | Some port -> Ok port.Id
-                                | None -> Error $"Can't find {portType} port {symPort.PortNumber} on component {symPort.Label}")
-            
-            match getPortId PortType.Input target, getPortId PortType.Output source with
-            | Error e, _ | _, Error e -> Error e
-            | Ok inPort, Ok outPort ->
-                let newWire = BusWireUpdate.makeNewWire (InputPortId inPort) (OutputPortId outPort) model.Wire
-                if model.Wire.Wires |> Map.exists (fun wid wire -> wire.InputPort=newWire.InputPort && wire.OutputPort = newWire.OutputPort) then
-                        // wire already exists
-                        Error "Can't create wire from {source} to {target} because a wire already exists between those ports"
-                else
-                     model
-                     |> Optic.set (busWireModel_ >-> BusWireT.wireOf_ newWire.WId) newWire
-                     |> Ok
-            
-
-        /// Run the global wire separation algorithm (should be after all wires have been placed and routed)
-        let separateAllWires (model: SheetT.Model) : SheetT.Model =
-            model
-            |> Optic.map busWireModel_ (BusWireSeparate.updateWireSegmentJumpsAndSeparations (model.Wire.Wires.Keys |> Seq.toList))
+        
 
         /// Copy testModel into the main Issie Sheet making its contents visible
         let showSheetInIssieSchematic (testModel: SheetT.Model) (dispatch: Dispatch<Msg>) =
@@ -748,7 +785,37 @@ module D3Testing =
         
         let testModelGen (model: Model) (dispatch: Dispatch<Msg>) =
             printfn $"{getTestModel model.Sheet}"
-            ()
+
+            // let test = { SimpleSymbols = [{ SymLabel = Symbol0 
+            //             CompType = "GateN (and, 2)"
+            //             Position = { X = 1615.605
+            //             Y = 1649.25 }
+            //             STransform = { Rotation = Degree0
+            //             Flipped = false } }; { SymLabel = Symbol1
+            //             CompType = "GateN (and, 2)"
+            //             Position = { X = 1842.105
+            //             Y = 1842.25 }
+            //             STransform = { Rotation = Degree0
+            //             Flipped = false } }; { SymLabel = Symbol2
+            //             CompType = Mux2
+            //             Position = { X = 1602.895
+            //             Y = 1735.25 }
+            //             STransform = { Rotation = Degree0
+            //             Flipped = false } }]
+            //             Connections = [{ Source = { Label = Symbol2
+            //             PortNumber = 0 }
+            //             Target = { Label = Symbol1
+            //             PortNumber = 0 } }; { Source = { Label = Symbol0
+            //             PortNumber = 0 }
+            //             Target = { Label = Symbol1
+            //             PortNumber = 0 } }] }
+
+            let test = getTestModel model.Sheet
+
+            let sheet = placeTestModel test 
+
+            showSheetInIssieSchematic sheet dispatch
+
         
 
 

@@ -205,7 +205,7 @@ let symbol_rotation_ =
 /// A lens for accessing the flip state of a symbol.
 let symbol_flipped_ =
     Lens.create (fun sym -> sym.STransform.Flipped)
-                (fun newState sym -> {sym with STransform = {sym.STransform with Flipped =newState}})
+                (fun newState sym -> {sym with STransform = {sym.STransform with Flipped = newState}})
 
 
 //----------------------------------------------------------------------------------------------//
