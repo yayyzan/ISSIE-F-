@@ -1,8 +1,6 @@
 module TestDrawBlockD3
 open GenerateData
 open Elmish
-open System.IO
-
 
 //-------------------------------------------------------------------------------------------//
 //--------Types to represent tests with (possibly) random data, and results from tests-------//
