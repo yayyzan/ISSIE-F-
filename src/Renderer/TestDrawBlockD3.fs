@@ -1,6 +1,7 @@
 module TestDrawBlockD3
 open GenerateData
 open Elmish
+open System.IO
 
 
 //-------------------------------------------------------------------------------------------//
@@ -14,7 +15,6 @@ module TestLib =
         | Ok x -> x
         | Error mess ->
             failwithf "%s" mess
-
 
     type TestStatus =
             | Fail of string
@@ -113,13 +113,6 @@ module D3Testing =
     let caseInvariantEqual str1 str2 =
         String.toUpper str1 = String.toUpper str2
     
-    let inline invertRot (rot: Rotation) =
-        match rot with
-        | Degree0 -> Degree0
-        | Degree180 -> Degree180
-        | Degree90 -> Degree270
-        | Degree270 -> Degree90
-    
 
     let flipPortMaps (sym: SymbolT.Symbol) : SymbolT.PortMaps = 
         let portOrientation = 
@@ -133,12 +126,6 @@ module D3Testing =
             |> Map.map (fun edge order -> List.rev order)  
 
         {Order=portOrder;Orientation=portOrientation}   
-
-
-    let getFirstPartBeforeWhiteSpace (input: string) =
-        match input.Split([|' '|]) with
-        | [|firstPart|] -> firstPart
-        | _ -> input // Handle the case where there's no whitespace
         
 
     /// Identify a port from its component label and number.
@@ -168,11 +155,6 @@ module D3Testing =
         SimpleSymbols : SimpleSymbol List
         Connections : SimpleConnection List
     }
-    
-    let getShortSymbolName (sym: SymbolT.Symbol) =
-        sym.Component.Type
-        |> string 
-        |> getFirstPartBeforeWhiteSpace 
 
 
     let getSimSymbolMap (model: SheetT.Model) : Map<ComponentId, SimpleSymbol> = 
@@ -251,15 +233,6 @@ module D3Testing =
                       |> Optic.set symbol_flipped_ simSymbol.STransform.Flipped
                       |> Optic.set symbol_rotation_ simSymbol.STransform.Rotation
                       |> Optic.set SymbolT.portMaps_ portMaps'
-                    //   |> SymbolResizeHelpers.rotateSymbol simSymbol.STransform.Rotation
-                    //   |> updateSymPos simSymbol.Position // little trick to fix position shift with mux rotation
-                      
-           
-           
-            // let portMaps' = SymbolResizeHelpers.rotatePortInfo simSymbol.STransform.Rotation sym.PortMaps
-            //                 |> Optic.set SymbolT.portMaps_ 
-
-        //    //rotatePortInfo rotation sym.PortMaps
 
             let symModel' = Optic.set (SymbolT.symbolOf_ symId) sym' symModel
             
@@ -784,35 +757,31 @@ module D3Testing =
                 func testIndex 0 dispatch
         
         let testModelGen (model: Model) (dispatch: Dispatch<Msg>) =
-            printfn $"{getTestModel model.Sheet}"
+            // printfn $"{getTestModel model.Sheet}"
 
-            // let test = { SimpleSymbols = [{ SymLabel = Symbol0 
-            //             CompType = "GateN (and, 2)"
-            //             Position = { X = 1615.605
-            //             Y = 1649.25 }
-            //             STransform = { Rotation = Degree0
-            //             Flipped = false } }; { SymLabel = Symbol1
-            //             CompType = "GateN (and, 2)"
-            //             Position = { X = 1842.105
-            //             Y = 1842.25 }
-            //             STransform = { Rotation = Degree0
-            //             Flipped = false } }; { SymLabel = Symbol2
-            //             CompType = Mux2
-            //             Position = { X = 1602.895
-            //             Y = 1735.25 }
-            //             STransform = { Rotation = Degree0
-            //             Flipped = false } }]
-            //             Connections = [{ Source = { Label = Symbol2
-            //             PortNumber = 0 }
-            //             Target = { Label = Symbol1
-            //             PortNumber = 0 } }; { Source = { Label = Symbol0
-            //             PortNumber = 0 }
-            //             Target = { Label = Symbol1
-            //             PortNumber = 0 } }] }
+            let test2 : TestModel = 
+                { SimpleSymbols =
+                    [ { SymLabel = "G1"
+                        CompType = GateN(And, 2)
+                        Position = { X = 1638.105; Y = 1671.75 }
+                        STransform = { Rotation = Degree0; Flipped = false } }
+                      { SymLabel = "G2"
+                        CompType = GateN(And, 2)
+                        Position = { X = 1874.605; Y = 1858.25 }
+                        STransform = { Rotation = Degree0; Flipped = false } }
+                      { SymLabel = "MUX1"
+                        CompType = Mux2
+                        Position = { X = 1632.895; Y = 1780.25 }
+                        STransform = { Rotation = Degree0; Flipped = false } } ]
+                  Connections =
+                    [ { Source = { Label = "MUX1"; PortNumber = 0 }
+                        Target = { Label = "G2"; PortNumber = 0 } }
+                      { Source = { Label = "G1"; PortNumber = 0 }
+                        Target = { Label = "G2"; PortNumber = 1 } } ] }
 
-            let test = getTestModel model.Sheet
+            // let test = getTestModel model.Sheet
 
-            let sheet = placeTestModel test 
+            let sheet = placeTestModel test2
 
             showSheetInIssieSchematic sheet dispatch
 
