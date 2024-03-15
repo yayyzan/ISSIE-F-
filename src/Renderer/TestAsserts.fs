@@ -1,7 +1,5 @@
-module Renderer.TestAsserts
+module TestAsserts
 
-open GenerateData
-open EEExtensions
 open Optics
 open CommonTypes
 open DrawModelType
@@ -9,43 +7,19 @@ open BlockHelpers
 open DrawModelType.SymbolT
 open DrawModelType.SheetT
 open Operators
-open System
+open SheetBeautifyHelpers
 open SheetBeautifyHelpers.EzraHelpers
-open SheetBeautifyHelpers.Constants
-
-//----------------------------------------------------------------------------------------------//
-//-----------------------------------Global Asserts Functions-----------------------------------//
-//----------------------------------------------------------------------------------------------//
-
-/// Ignore sheet and fail on the specified sample, useful for displaying a given sample
-let failOnSampleNumber (sampleToFail: int) (sample: int) _sheet =
-    if sampleToFail = sample then
-        Some $"Failing forced on Sample {sampleToFail}."
-    else
-        None
-/// Fails all tests: useful to show in sequence all the sheets generated in a test
-let failOnAllTests (sample: int) _ = Some <| $"Sample {sample}"
-/// Fail when sheet contains a wire segment that overlaps (or goes too close to) a symbol outline
-let failOnWireIntersectsSymbol (sample: int) (sheet: SheetT.Model) =
-    let wireModel = sheet.Wire
-    wireModel.Wires
-    |> Map.exists (fun _ wire ->
-        BusWireRoute.findWireSymbolIntersections wireModel wire
-        <> [])
-    |> (function
-    | true -> Some $"Wire intersects a symbol outline in Sample {sample}"
-    | false -> None)
+open BusWidthInferer
+open TestDrawBlockHelpers.SimpleSymbol
 
 //----------------------------------------------------------------------------------------------//
 //------------------------------------D1T Asserts Functions-------------------------------------//
 //----------------------------------------------------------------------------------------------//
 
-let countComponentOverlaps (sample: int) (sheet: SheetT.Model) : string option =
+let countComponentOverlaps  (sheet: SheetT.Model) : int =
+    printfn "Testing countComponentOverlaps"
     let count = SheetBeautifyHelpers.numOfIntersectedSymPairs sheet
-    if count > 0 then
-        Some $"Sample {sample} has {count} component overlaps"
-    else
-        None
+    count
 
 /// <summary>
 /// Counts the number of straightened wire segments within a given sheet model.
@@ -58,8 +32,8 @@ let countComponentOverlaps (sample: int) (sheet: SheetT.Model) : string option =
 /// <remarks>
 /// This function evaluates each wire segment in the sheet model to determine if it is straight (aligned either horizontally or vertically).
 /// </remarks>
-let countWireStraightInSheet (sample: int) (sheet: SheetT.Model) : string option =
-
+let countWireStraightInSheet (sheet: SheetT.Model) : int =
+    printfn "Testing countWireStraightInSheet"
     let countTransformations (wire: BusWireT.Wire) : int =
         let visibleSegments =
             SheetBeautifyHelpers.SegmentHelpers.visibleSegments wire.WId sheet
@@ -72,21 +46,16 @@ let countWireStraightInSheet (sample: int) (sheet: SheetT.Model) : string option
     let numberOfStraightWires =
         sheet
         |> Optic.get wires_
-        |> mapValuesToList
+        |> mapValues
         |> List.map countTransformations
         |> List.sum
 
-    if numberOfStraightWires > 0 then
-        Some $"Sample {sample} has {numberOfStraightWires} straight wires."
-    else
-        None
+    numberOfStraightWires
 
-let countWireRoutingLength (sample: int) (sheet: SheetT.Model) : string option =
+let countWireRoutingLength (sheet: SheetT.Model) : int =
+    printfn "Testing countWireRoutingLength"
     let count = SheetBeautifyHelpers.calcVisWireLength sheet
-    if count > 0 then
-        Some $"Sample {sample} has {count} wire routing lenght"
-    else
-        None
+    int count
 
 let isPointCloseToRectangle (point: XYPos) (box: BoundingBox) distanceThreshold =
     let inRange v minV maxV =
@@ -103,7 +72,7 @@ let isSegmentIntersectingOrCloseToBox (segmentStart: XYPos) (segmentEnd: XYPos) 
 let isWireSquashed (wire: BusWireT.Wire) (sheet: SheetT.Model) : bool =
     let componentsBoundingBoxes: BoundingBox list =
         sheet.Wire.Symbol.Symbols
-        |> mapValuesToList
+        |> mapValues
         |> List.map SheetBeautifyHelpers.getSymBoundingBox
 
     let segmentTooCloseToComponent segment =
@@ -118,7 +87,8 @@ let isWireSquashed (wire: BusWireT.Wire) (sheet: SheetT.Model) : bool =
     wireSegments
     |> List.exists segmentTooCloseToComponent
 
-let countWireSquashedInSheet (sample: int) (sheet: SheetT.Model) : string option =
+let countWireSquashedInSheet (sheet: SheetT.Model) : int =
+    printfn "Testing countWireSquashedInSheet"
     let count =
         sheet.Wire.Wires
         |> Map.toList
@@ -126,19 +96,14 @@ let countWireSquashedInSheet (sample: int) (sheet: SheetT.Model) : string option
         |> List.map (fun w -> isWireSquashed w sheet)
         |> List.filter (fun n -> n = true)
         |> List.length
+    count
 
-    if count > 0 then
-        Some $"Sample {sample} has {count} squashed wires"
-    else
-        None
 
 //----------------------------------------------------------------------------------------------//
 //------------------------------------D2T Asserts Functions-------------------------------------//
 //----------------------------------------------------------------------------------------------//
 
-/// <summary>
-/// Checks if two wire segments intersect by evaluating their horizontal and vertical overlap.
-/// </summary>
+/// <summary> Checks if two wire segments intersect by evaluating their horizontal and vertical overlap. </summary>
 /// <param name="seg1">The first wire segment to check for intersection.</param>
 /// <param name="seg2">The second wire segment to check for intersection.</param>
 /// <returns>
@@ -162,7 +127,8 @@ let checkWireCrossing (seg1: BusWireT.ASegment) (seg2: BusWireT.ASegment) : bool
 /// <remarks>
 /// This function evaluates all wire segments within the sheet to determine if any intersect with others. It only counts intersections between different wires or non-adjacent segments of the same wire, ignoring overlaps of directly connected segments. The purpose is to identify potential schematic layout issues where wires cross each other, which could indicate design or routing inefficiencies.
 /// </remarks>
-let countWiresOverlapInSheet (sample: int) (sheet: SheetT.Model) : string option =
+let countWiresOverlapInSheet (sheet: SheetT.Model) : int =
+    printfn "Testing countWiresOverlapInSheet"
     // This function serves general purpose and will consider any overlapping segments, to count proper crossings use countWiresCrossingInSheet
     let allWires = sheet.Wire.Wires |> Map.toList |> List.map snd
     let allAbsSegments = allWires |> List.collect getAbsSegments
@@ -174,32 +140,117 @@ let countWiresOverlapInSheet (sample: int) (sheet: SheetT.Model) : string option
             || seg1.Segment.Index <> seg2.Segment.Index)
         |> List.filter (fun (seg1, seg2) -> checkWireCrossing seg1 seg2)
     let numberOfCrossings = crossings.Length / 2
-    if numberOfCrossings > 0 then
-        Some $"Sample {sample} has {numberOfCrossings} wire crossings"
-    else
-        None
+    numberOfCrossings
+let countWiresCrossingInSheet  (sheet: SheetT.Model) : int  =
+    printfn "Testing countWiresCrossingInSheet"
+    let count = visibleWireIntersections sheet
+    count
 
-let countWiresCrossingInSheet (sample: int) (sheet: SheetT.Model) : string option =
-    let count = SheetBeautifyHelpers.numOfWireRightAngleCrossings sheet
-    if count > 0 then
-        Some $"Sample {sample} has {count} wire crossings"
-    else
-        None
-
-let countWireIntersectsSymbolInSheet (sample: int) (sheet: SheetT.Model) : string option =
+let countWireIntersectsSymbolInSheet (sheet: SheetT.Model) : int =
+    printfn "Testing countWireIntersectsSymbolInSheet"
     let count = SheetBeautifyHelpers.numOfIntersectSegSym sheet
-    if count > 0 then
-        Some $"Sample {sample} has {count} wire intersects symbol"
-    else
-        None
+    count
 
 //----------------------------------------------------------------------------------------------//
 //------------------------------------D3T Asserts Functions-------------------------------------//
 //----------------------------------------------------------------------------------------------//
 
-let countBendsInSheet (sample: int) (sheet: SheetT.Model) : string option =
-    let count = SheetBeautifyHelpers.numOfVisRightAngles sheet
-    if count > 0 then
-        Some $"Sample {sample} has {count} bends"
-    else
-        None
+let countBendsInSheet (sheet: SheetT.Model) : int =
+    printfn "Testing countBendsInSheet"
+    let count = countVisibleRightAngles sheet
+    count
+
+//----------------------------------------------------------------------------------------------//
+//-------------------------------------Comparison Asserts---------------------------------------//
+//----------------------------------------------------------------------------------------------//
+
+/// <summary>
+/// If the number of right angles increased by beautification, this is considered a failure.
+/// If it's the same, it's not considered a failure; other metrics will be used here.
+/// </summary>
+/// <param name="sheetBeforeBeautify">The sheet model before beautification.</param>
+/// <param name="sheetAfterBeautify">The sheet model after beautification.</param>
+/// <remarks>
+/// Use with 'countBendsInSheet' metric
+/// </remarks>
+/// <returns>
+/// A failure message if the number of right angles increased in the sample;
+/// otherwise, None.
+/// </returns>
+let failOnBeautifyIncreasesRightAngles (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let rAnglesBefore = countBendsInSheet sheetBeforeBeautify
+    let rAnglesAfter = countBendsInSheet sheetAfterBeautify
+    match rAnglesAfter > rAnglesBefore with
+        | true -> Some $"FAILURE: Beautify increased no. right angles"
+        | false -> None
+
+/// <remarks>
+/// Use with 'countComponentOverlaps' metric
+/// </remarks>
+let failOnBeautifyCausesSymbolOverlap (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let overlapAfter = countComponentOverlaps sheetAfterBeautify
+    match overlapAfter > 0 with
+        | true -> Some $"FAILURE: Beautify caused symbols to overlap"
+        | false -> None
+
+/// <remarks>
+/// Use with 'countWireIntersectsSymbolInSheet' metric
+/// </remarks>
+let failOnBeautifyIncreasesSegSymIntersect (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let intersectsBefore = countWireIntersectsSymbolInSheet sheetBeforeBeautify
+    let intersectsAfter = countWireIntersectsSymbolInSheet sheetAfterBeautify
+    match intersectsAfter > intersectsBefore with
+        | true -> Some $"FAILURE: Beautify increased no. wire segment/symbol intersections"
+        | false -> None
+
+/// <remarks>
+/// Use with 'countWireStraightInSheet' metric
+/// </remarks>
+let failOnBeautifyDecreasesStraightWires (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let straightWiresBefore = countWireStraightInSheet sheetBeforeBeautify
+    let straightWiresAfter = countWireStraightInSheet sheetAfterBeautify
+    match straightWiresBefore > straightWiresAfter with
+        | true -> Some $"FAILURE: Beautify decreased no. straight wires in sheet"
+        | false -> None
+
+/// <remarks>
+/// Use with 'countWireRoutingLength' metric
+/// </remarks>
+let failOnBeautifyIncreasesWireLength (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let lengthBefore = countWireRoutingLength sheetBeforeBeautify
+    let lengthAfter = countWireRoutingLength sheetAfterBeautify
+    match lengthAfter > lengthBefore with
+        | true -> Some $"FAILURE: Beautify increased visible wire length in sheet"
+        | false -> None
+
+/// <remarks>
+/// Use with 'countWireSquashedInSheet' metric
+/// </remarks>
+let failOnBeautifyIncreasesSquashedWires (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let squashesBefore = countWireSquashedInSheet sheetBeforeBeautify
+    let squashesAfter = countWireSquashedInSheet sheetAfterBeautify
+    match squashesAfter > squashesBefore with
+        | true -> Some $"FAILURE: Beautify increased no. of squased wires in sheet"
+        | false -> None
+
+/// <remarks>
+/// Use with 'countWiresCrossingInSheet' metric
+/// </remarks>
+let failOnBeautifyIncreasesRightAngleCrossings (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let crossingsBefore = countWiresCrossingInSheet sheetBeforeBeautify
+    let crossingsAfter = countWiresCrossingInSheet sheetAfterBeautify
+    match crossingsAfter > crossingsBefore with
+        | true -> Some $"FAILURE: Beautify increased no. of right angle crossings in sheet"
+        | false -> None
+
+/// <remarks>
+/// Use with 'countWiresOverlapInSheet' metric
+/// </remarks>
+let failOnBeautifyIncreasesOverlappingWires (sheetBeforeBeautify: SheetT.Model) (sheetAfterBeautify: SheetT.Model) =
+    let overlapsBefore = countWiresOverlapInSheet sheetBeforeBeautify
+    let overlapsAfter = countWiresOverlapInSheet sheetAfterBeautify
+    match overlapsAfter > overlapsBefore with
+        | true -> Some $"FAILURE: Beautify increased no. of overlapping wires"
+        | false -> None
+
+
