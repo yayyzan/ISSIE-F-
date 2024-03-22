@@ -6,7 +6,7 @@ open CommonTypes
 open DrawModelType
 
 let unitTestMetrics: list<(SheetT.Model -> int)> =
-    [ countBendsInSheet; countWiresCrossingInSheet ]
+    [ countBendsInSheet; countWiresCrossingInSheet; countWireIntersectsSymbolInSheet ]
 
 let randomTestAsserts : list<(SheetT.Model -> SheetT.Model -> option<string>)> =
     [ failOnBeautifyCausesSymbolOverlap;
@@ -16,7 +16,6 @@ let randomTestAsserts : list<(SheetT.Model -> SheetT.Model -> option<string>)> =
 let beautifyFunction (sheetModel: SheetT.Model) : SheetT.Model =
     // Placeholder beautify logic
     SheetBeautifyD2.sheetOrderFlip sheetModel
-    // sheetModel
 
 let modelsToTest: TestModel list =
     [ 
